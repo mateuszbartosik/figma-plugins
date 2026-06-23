@@ -1,4 +1,4 @@
-# figma-components
+# figma-plugins
 
 Figma plugins I built to scratch my own itch — hopefully useful to others too.
 
@@ -20,7 +20,7 @@ Each plugin is loaded locally via Figma's developer mode — no Figma Community 
 
 1. Clone the repo
    ```bash
-   git clone https://github.com/mateuszbartosik/figma-components.git
+   git clone https://github.com/mateuszbartosik/figma-plugins.git
    ```
 2. Open the plugin folder and install dependencies
    ```bash
