@@ -1,3 +1,17 @@
 <!DOCTYPE html>
 <html><head><meta charset="utf-8"></head>
-<body><p>Variable Auditor</p></body></html>
+<body>
+<button id="scan">Scan document</button>
+<pre id="out" style="white-space:pre-wrap;font:11px monospace"></pre>
+<script>
+  document.getElementById('scan').onclick = () =>
+    parent.postMessage({ pluginMessage: { type: 'scan', scope: 'document' } }, '*');
+  onmessage = (e) => {
+    const m = e.data.pluginMessage; if (!m) return;
+    if (m.type === 'scan-result') document.getElementById('out').textContent =
+      JSON.stringify(m.result.summary) + '\n' + m.result.hardcoded.map(g => g.label + ' ×' + g.count).join('\n');
+    if (m.type === 'error') document.getElementById('out').textContent = 'ERROR: ' + m.message;
+  };
+</script>
+</body>
+</html>
