@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { rgbaToHex, formatNumber, groupMeta, computeUnused, groupHardcoded } from './analysis.ts';
+import { rgbaToHex, formatNumber, groupMeta, computeUnused, groupHardcoded, resolveVariableValue } from './analysis.ts';
 import type { Occurrence } from './types.ts';
+import type { ResolvableVar } from './analysis.ts';
 
 test('rgbaToHex converts 0..1 channels to uppercase hex', () => {
   assert.strictEqual(rgbaToHex({ r: 1, g: 1, b: 1, a: 1 }), '#FFFFFF');
@@ -77,4 +78,24 @@ test('groupHardcoded groups by valueKey and sorts by count desc', () => {
   assert.strictEqual(groups[1].valueKey, 'radius:8');         // 2 occurrences
   assert.strictEqual(groups[1].count, 2);
   assert.strictEqual(groups[0].colorHex, '#FFFFFF');
+});
+
+test('resolveVariableValue resolves concrete and alias chains', () => {
+  const map = new Map<string, ResolvableVar>([
+    ['a', { id: 'a', valuesByMode: { m1: 8 } }],
+    ['b', { id: 'b', valuesByMode: { m1: { type: 'VARIABLE_ALIAS', id: 'a' } } }],
+    ['c', { id: 'c', valuesByMode: { m1: { type: 'VARIABLE_ALIAS', id: 'missing' } } }],
+  ]);
+  assert.strictEqual(resolveVariableValue('a', 'm1', map), 8);
+  assert.strictEqual(resolveVariableValue('b', 'm1', map), 8);   // through alias
+  assert.strictEqual(resolveVariableValue('c', 'm1', map), null); // dangling alias
+  assert.strictEqual(resolveVariableValue('missing', 'm1', map), null);
+});
+
+test('resolveVariableValue guards against cycles', () => {
+  const map = new Map<string, ResolvableVar>([
+    ['x', { id: 'x', valuesByMode: { m1: { type: 'VARIABLE_ALIAS', id: 'y' } } }],
+    ['y', { id: 'y', valuesByMode: { m1: { type: 'VARIABLE_ALIAS', id: 'x' } } }],
+  ]);
+  assert.strictEqual(resolveVariableValue('x', 'm1', map), null);
 });

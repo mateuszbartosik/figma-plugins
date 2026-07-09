@@ -93,3 +93,30 @@ export function groupHardcoded(occurrences: Occurrence[]): HardcodedGroup[] {
   groups.sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
   return groups;
 }
+
+export type VarValue = RGBA | number | string | boolean | { type: 'VARIABLE_ALIAS'; id: string };
+export interface ResolvableVar { id: string; valuesByMode: Record<string, VarValue> }
+
+function isAlias(v: VarValue): v is { type: 'VARIABLE_ALIAS'; id: string } {
+  return typeof v === 'object' && v !== null && (v as any).type === 'VARIABLE_ALIAS';
+}
+
+export function resolveVariableValue(
+  id: string,
+  modeId: string,
+  varMap: Map<string, ResolvableVar>,
+  seen: Set<string> = new Set(),
+): RGBA | number | string | boolean | null {
+  if (seen.has(id)) return null;
+  seen.add(id);
+  const v = varMap.get(id);
+  if (!v) return null;
+  let val: VarValue | undefined = v.valuesByMode[modeId];
+  if (val === undefined) {
+    const firstKey = Object.keys(v.valuesByMode)[0];
+    if (firstKey === undefined) return null;
+    val = v.valuesByMode[firstKey];
+  }
+  if (isAlias(val)) return resolveVariableValue(val.id, modeId, varMap, seen);
+  return val;
+}
