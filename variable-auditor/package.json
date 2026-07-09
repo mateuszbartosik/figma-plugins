@@ -5,7 +5,8 @@
   "scripts": {
     "build": "esbuild src/code.ts --bundle --outfile=dist/code.js --target=es6",
     "watch": "esbuild src/code.ts --bundle --outfile=dist/code.js --target=es6 --watch",
-    "test": "node --experimental-strip-types --test"
+    "test": "node --experimental-strip-types --test",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@figma/plugin-typings": "^1.96.0",
