@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { rgbaToHex, formatNumber, groupMeta, computeUnused } from './analysis.ts';
+import { rgbaToHex, formatNumber, groupMeta, computeUnused, groupHardcoded } from './analysis.ts';
+import type { Occurrence } from './types.ts';
 
 test('rgbaToHex converts 0..1 channels to uppercase hex', () => {
   assert.strictEqual(rgbaToHex({ r: 1, g: 1, b: 1, a: 1 }), '#FFFFFF');
@@ -52,4 +53,28 @@ test('computeUnused returns local vars not referenced and not remote', () => {
   assert.deepStrictEqual(out.map(v => v.id), ['v3']);
   assert.strictEqual(out[0].valuePreview, '40');
   assert.ok(!('remote' in out[0]));
+});
+
+function occ(over: Partial<Occurrence>): Occurrence {
+  return {
+    nodeId: 'n', nodeName: 'N', pageId: 'p', pageName: 'P',
+    category: 'color', kind: 'color', field: 'fills',
+    valueKey: 'color:#FFFFFF@1', colorHex: '#FFFFFF', opacity: 1,
+    ...over,
+  };
+}
+
+test('groupHardcoded groups by valueKey and sorts by count desc', () => {
+  const items = [
+    occ({ valueKey: 'radius:8', category: 'radiusStroke', kind: 'radius', field: 'cornerRadius', colorHex: undefined, opacity: undefined, num: 8 }),
+    occ({}), occ({ nodeId: 'n2' }), occ({ nodeId: 'n3' }),
+    occ({ valueKey: 'radius:8', category: 'radiusStroke', kind: 'radius', field: 'cornerRadius', colorHex: undefined, opacity: undefined, num: 8, nodeId: 'n4' }),
+  ];
+  const groups = groupHardcoded(items);
+  assert.strictEqual(groups.length, 2);
+  assert.strictEqual(groups[0].valueKey, 'color:#FFFFFF@1'); // 3 occurrences
+  assert.strictEqual(groups[0].count, 3);
+  assert.strictEqual(groups[1].valueKey, 'radius:8');         // 2 occurrences
+  assert.strictEqual(groups[1].count, 2);
+  assert.strictEqual(groups[0].colorHex, '#FFFFFF');
 });

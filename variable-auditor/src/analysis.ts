@@ -1,4 +1,4 @@
-import type { RGBA, HardcodedKind, HardcodedCategory, UnusedVariable, VariableResolvedType } from './types.ts';
+import type { RGBA, HardcodedKind, HardcodedCategory, UnusedVariable, VariableResolvedType, Occurrence, HardcodedGroup } from './types.ts';
 
 function channelToHex(v: number): string {
   const n = Math.max(0, Math.min(255, Math.round(v * 255)));
@@ -68,4 +68,28 @@ export function computeUnused(localVars: LocalVarInfo[], usedIds: Set<string>): 
       valuePreview: v.valuePreview,
       colorHex: v.colorHex,
     }));
+}
+
+export function groupHardcoded(occurrences: Occurrence[]): HardcodedGroup[] {
+  const byKey = new Map<string, HardcodedGroup>();
+  for (const o of occurrences) {
+    let g = byKey.get(o.valueKey);
+    if (!g) {
+      g = {
+        category: o.category, kind: o.kind, valueKey: o.valueKey,
+        label: '', colorHex: o.colorHex, opacity: o.opacity, num: o.num,
+        count: 0, occurrences: [],
+      };
+      byKey.set(o.valueKey, g);
+    }
+    g.occurrences.push(o);
+    g.count++;
+  }
+  const groups = [...byKey.values()];
+  // label from group meta (reuse groupMeta for consistency)
+  for (const g of groups) {
+    g.label = groupMeta(g.kind, g.colorHex ?? null, g.opacity ?? null, g.num ?? null).label;
+  }
+  groups.sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+  return groups;
 }
