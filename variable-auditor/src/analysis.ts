@@ -1,4 +1,4 @@
-import type { RGBA, HardcodedKind, HardcodedCategory, UnusedVariable, VariableResolvedType, Occurrence, HardcodedGroup } from './types.ts';
+import type { RGBA, HardcodedKind, HardcodedCategory, UnusedVariable, VariableResolvedType, Occurrence, HardcodedGroup, CandidateVariable } from './types.ts';
 
 function channelToHex(v: number): string {
   const n = Math.max(0, Math.min(255, Math.round(v * 255)));
@@ -119,4 +119,43 @@ export function resolveVariableValue(
   }
   if (isAlias(val)) return resolveVariableValue(val.id, modeId, varMap, seen);
   return val;
+}
+
+export interface ResolvedCandidate {
+  id: string;
+  name: string;
+  collectionName: string;
+  resolvedType: 'COLOR' | 'FLOAT';
+  valuePreview: string;
+  colorHex?: string;
+  modeValues: (RGBA | number | string | boolean | null)[];
+}
+
+type Target = { kind: 'color'; colorHex: string; opacity: number } | { kind: 'number'; num: number };
+
+function matchesTarget(value: RGBA | number | string | boolean | null, target: Target): boolean {
+  if (value === null) return false;
+  if (target.kind === 'number') {
+    return typeof value === 'number' && Math.abs(value - target.num) < 1e-4;
+  }
+  if (typeof value !== 'object') return false;
+  const hex = rgbaToHex(value as RGBA);
+  const op = Number.parseFloat(((value as RGBA).a ?? 1).toFixed(3));
+  return hex === target.colorHex && Math.abs(op - target.opacity) < 1e-4;
+}
+
+export function rankCandidates(target: Target, candidates: ResolvedCandidate[]): CandidateVariable[] {
+  return candidates
+    .map(c => ({
+      id: c.id,
+      name: c.name,
+      collectionName: c.collectionName,
+      valuePreview: c.valuePreview,
+      colorHex: c.colorHex,
+      exact: c.modeValues.some(v => matchesTarget(v, target)),
+    }))
+    .sort((a, b) =>
+      (b.exact ? 1 : 0) - (a.exact ? 1 : 0) ||
+      a.collectionName.localeCompare(b.collectionName) ||
+      a.name.localeCompare(b.name));
 }

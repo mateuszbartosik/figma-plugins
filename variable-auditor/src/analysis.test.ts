@@ -99,3 +99,26 @@ test('resolveVariableValue guards against cycles', () => {
   ]);
   assert.strictEqual(resolveVariableValue('x', 'm1', map), null);
 });
+
+import { rankCandidates } from './analysis.ts';
+import type { ResolvedCandidate } from './analysis.ts';
+
+test('rankCandidates flags exact matches first (number)', () => {
+  const cands: ResolvedCandidate[] = [
+    { id: 'a', name: 'space-4', collectionName: 'Spacing', resolvedType: 'FLOAT', valuePreview: '16', modeValues: [16] },
+    { id: 'b', name: 'space-3', collectionName: 'Spacing', resolvedType: 'FLOAT', valuePreview: '12', modeValues: [12] },
+  ];
+  const out = rankCandidates({ kind: 'number', num: 16 }, cands);
+  assert.strictEqual(out[0].id, 'a');
+  assert.strictEqual(out[0].exact, true);
+  assert.strictEqual(out[1].exact, false);
+});
+
+test('rankCandidates flags exact matches (color, any mode)', () => {
+  const cands: ResolvedCandidate[] = [
+    { id: 'c', name: 'brand', collectionName: 'Color', resolvedType: 'COLOR', valuePreview: '#2B5CE6', colorHex: '#2B5CE6',
+      modeValues: [{ r: 1, g: 1, b: 1, a: 1 }, { r: 43/255, g: 92/255, b: 230/255, a: 1 }] },
+  ];
+  const out = rankCandidates({ kind: 'color', colorHex: '#2B5CE6', opacity: 1 }, cands);
+  assert.strictEqual(out[0].exact, true);
+});
