@@ -257,6 +257,13 @@ single-theme (no dark mode in v1).
   suggestions on top, then all compatible variables grouped by collection, and a
   "Replace N layers" confirm; Cancel returns.
 
+**Layout & scrolling:** the panel is a **fixed-height flex column** — header, scope,
+metrics, and footer stay pinned while **only the results region scrolls**. Result
+cards must be `flex-shrink: 0` so they keep full height instead of compressing (a
+flex column would otherwise shrink them and clip content, breaking the scroll). This
+must hold correctly with any number of accordions open. In the real plugin the body
+is `height: 100vh`; the mockup uses a bounded height to emulate the plugin window.
+
 **Interactions:** accordions animate via `grid-template-rows: 1fr↔0fr` (verified
 working); hover states on rows/buttons; entrance fade/slide; all motion disabled
 under `prefers-reduced-motion`. Empty states per section ("No unused variables").
