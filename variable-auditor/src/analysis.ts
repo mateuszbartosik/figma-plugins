@@ -1,4 +1,4 @@
-import type { RGBA, HardcodedKind, HardcodedCategory } from './types.ts';
+import type { RGBA, HardcodedKind, HardcodedCategory, UnusedVariable, VariableResolvedType } from './types.ts';
 
 function channelToHex(v: number): string {
   const n = Math.max(0, Math.min(255, Math.round(v * 255)));
@@ -45,4 +45,27 @@ export function groupMeta(
   }
   const val = formatNumber(num ?? 0);
   return { category, valueKey: `${kind}:${val}`, label: `${LABEL_BY_KIND[kind]} · ${val}` };
+}
+
+export interface LocalVarInfo {
+  id: string;
+  name: string;
+  collectionName: string;
+  resolvedType: VariableResolvedType;
+  remote: boolean;
+  valuePreview: string;
+  colorHex?: string;
+}
+
+export function computeUnused(localVars: LocalVarInfo[], usedIds: Set<string>): UnusedVariable[] {
+  return localVars
+    .filter(v => !v.remote && !usedIds.has(v.id))
+    .map(v => ({
+      id: v.id,
+      name: v.name,
+      collectionName: v.collectionName,
+      resolvedType: v.resolvedType,
+      valuePreview: v.valuePreview,
+      colorHex: v.colorHex,
+    }));
 }

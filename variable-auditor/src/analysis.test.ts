@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { rgbaToHex, formatNumber, groupMeta } from './analysis.ts';
+import { rgbaToHex, formatNumber, groupMeta, computeUnused } from './analysis.ts';
 
 test('rgbaToHex converts 0..1 channels to uppercase hex', () => {
   assert.strictEqual(rgbaToHex({ r: 1, g: 1, b: 1, a: 1 }), '#FFFFFF');
@@ -38,4 +38,18 @@ test('groupMeta buckets typography kinds with distinct keys', () => {
   assert.strictEqual(groupMeta('fontSize', null, null, 14).valueKey, 'fontSize:14');
   assert.strictEqual(groupMeta('lineHeight', null, null, 14).valueKey, 'lineHeight:14');
   assert.strictEqual(groupMeta('fontSize', null, null, 14).label, 'Font size · 14');
+});
+
+test('computeUnused returns local vars not referenced and not remote', () => {
+  const vars = [
+    { id: 'v1', name: 'used-by-node', collectionName: 'C', resolvedType: 'COLOR' as const, remote: false, valuePreview: '#111111', colorHex: '#111111' },
+    { id: 'v2', name: 'used-by-alias', collectionName: 'C', resolvedType: 'FLOAT' as const, remote: false, valuePreview: '8' },
+    { id: 'v3', name: 'orphan', collectionName: 'C', resolvedType: 'FLOAT' as const, remote: false, valuePreview: '40' },
+    { id: 'v4', name: 'remote-orphan', collectionName: 'Lib', resolvedType: 'COLOR' as const, remote: true, valuePreview: '#222222' },
+  ];
+  const used = new Set(['v1', 'v2']);
+  const out = computeUnused(vars, used);
+  assert.deepStrictEqual(out.map(v => v.id), ['v3']);
+  assert.strictEqual(out[0].valuePreview, '40');
+  assert.ok(!('remote' in out[0]));
 });
