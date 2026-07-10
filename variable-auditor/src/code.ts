@@ -112,10 +112,25 @@ function collectNode(
 
     // Auto-layout spacing
     if ('layoutMode' in node && (node as any).layoutMode !== 'NONE') {
-      const spacingFields = ['paddingLeft','paddingRight','paddingTop','paddingBottom','itemSpacing','counterAxisSpacing'] as const;
-      for (const f of spacingFields) {
+      const paddingFields = ['paddingLeft','paddingRight','paddingTop','paddingBottom'] as const;
+      for (const f of paddingFields) {
         const val = (node as any)[f];
         if (typeof val === 'number' && val > 0 && !bv?.[f]) pushNumberOccurrence(node, page, 'spacing', f, val, occ);
+      }
+      // itemSpacing is ignored by Figma (shown as "Auto") when items are distributed —
+      // the property still holds a stale number, so reporting it would be a false positive.
+      if ((node as any).primaryAxisAlignItems !== 'SPACE_BETWEEN') {
+        const itemSpacing = (node as any).itemSpacing;
+        if (typeof itemSpacing === 'number' && itemSpacing > 0 && !bv?.itemSpacing) {
+          pushNumberOccurrence(node, page, 'spacing', 'itemSpacing', itemSpacing, occ);
+        }
+      }
+      // counterAxisSpacing (the wrap gap) only applies when the layout actually wraps.
+      if ((node as any).layoutWrap === 'WRAP') {
+        const counterAxisSpacing = (node as any).counterAxisSpacing;
+        if (typeof counterAxisSpacing === 'number' && counterAxisSpacing > 0 && !bv?.counterAxisSpacing) {
+          pushNumberOccurrence(node, page, 'spacing', 'counterAxisSpacing', counterAxisSpacing, occ);
+        }
       }
     }
 

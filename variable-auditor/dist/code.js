@@ -283,11 +283,23 @@
             }
           }
           if ("layoutMode" in node && node.layoutMode !== "NONE") {
-            const spacingFields = ["paddingLeft", "paddingRight", "paddingTop", "paddingBottom", "itemSpacing", "counterAxisSpacing"];
-            for (const f of spacingFields) {
+            const paddingFields = ["paddingLeft", "paddingRight", "paddingTop", "paddingBottom"];
+            for (const f of paddingFields) {
               const val = node[f];
               if (typeof val === "number" && val > 0 && !(bv == null ? void 0 : bv[f]))
                 pushNumberOccurrence(node, page, "spacing", f, val, occ);
+            }
+            if (node.primaryAxisAlignItems !== "SPACE_BETWEEN") {
+              const itemSpacing = node.itemSpacing;
+              if (typeof itemSpacing === "number" && itemSpacing > 0 && !(bv == null ? void 0 : bv.itemSpacing)) {
+                pushNumberOccurrence(node, page, "spacing", "itemSpacing", itemSpacing, occ);
+              }
+            }
+            if (node.layoutWrap === "WRAP") {
+              const counterAxisSpacing = node.counterAxisSpacing;
+              if (typeof counterAxisSpacing === "number" && counterAxisSpacing > 0 && !(bv == null ? void 0 : bv.counterAxisSpacing)) {
+                pushNumberOccurrence(node, page, "spacing", "counterAxisSpacing", counterAxisSpacing, occ);
+              }
             }
           }
           if (node.type === "TEXT") {

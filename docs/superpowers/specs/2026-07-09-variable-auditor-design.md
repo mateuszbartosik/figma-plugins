@@ -145,7 +145,7 @@ Categories and fields:
 | **Color** | any with `fills`/`strokes` | solid paint `.color` (+ opacity) | skip if paint has `boundVariables.color`; skip gradient/image |
 | **Corner radius** | `cornerRadius`-bearing | `topLeft/Right`, `bottomLeft/Right` (or uniform) | skip value `0` |
 | **Stroke weight** | nodes **with** strokes | `strokeWeight` (per-side if mixed) | only if strokes present |
-| **Spacing** | `layoutMode !== 'NONE'` | `paddingLeft/Right/Top/Bottom`, `itemSpacing`, `counterAxisSpacing` | skip value `0` |
+| **Spacing** | `layoutMode !== 'NONE'` | `paddingLeft/Right/Top/Bottom`, `itemSpacing`, `counterAxisSpacing` | skip value `0`; skip itemSpacing when Auto/space-between (primaryAxisAlignItems SPACE_BETWEEN); counterAxisSpacing only when layoutWrap WRAP |
 | **Typography** | `TEXT` | `fontSize`, `lineHeight`, `letterSpacing` | skip `figma.mixed` nodes; skip `letterSpacing` 0 (intentional default) |
 
 Skipping zeros for radius/spacing — and `letterSpacing` 0 (the ubiquitous intentional default) — avoids near-universal noise (binding a `0` is rare).
