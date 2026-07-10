@@ -13,8 +13,6 @@ interface FullScan {
   unused: UnusedVariable[];
   brokenAll: BrokenReference[];
   occurrencesAll: Occurrence[];
-  selectionIds: Set<string>;
-  currentPageId: string;
 }
 let lastScan: FullScan | null = null;
 
@@ -60,8 +58,10 @@ function collectNode(
   if (bv) {
     for (const field of Object.keys(bv)) {
       const entry = bv[field];
-      const aliases = Array.isArray(entry) ? entry : [entry];
-      for (const a of aliases) {
+      const aliases = field === 'componentProperties' && entry && typeof entry === 'object' && !Array.isArray(entry)
+        ? Object.values(entry as any)
+        : Array.isArray(entry) ? entry : [entry];
+      for (const a of aliases as any[]) {
         if (a && typeof a.id === 'string') {
           usedIds.add(a.id);
           refs.push({ id: a.id, ref: {
@@ -81,8 +81,8 @@ function collectNode(
   if ('cornerRadius' in node) {
     const cr = (node as any).cornerRadius;
     if (cr !== figma.mixed && typeof cr === 'number') {
-      if (cr > 0 && !bv?.topLeftRadius) pushNumberOccurrence(node, page, 'radius', 'cornerRadius', cr, occ);
-    } else if (cr === figma.mixed) {
+      if (cr > 0 && !bv?.cornerRadius && !bv?.topLeftRadius) pushNumberOccurrence(node, page, 'radius', 'cornerRadius', cr, occ);
+    } else if (cr === figma.mixed && 'topLeftRadius' in node) {
       for (const f of ['topLeftRadius','topRightRadius','bottomLeftRadius','bottomRightRadius'] as const) {
         const val = (node as any)[f];
         if (typeof val === 'number' && val > 0 && !bv?.[f]) pushNumberOccurrence(node, page, 'radius', f, val, occ);
@@ -179,15 +179,17 @@ async function fullScan(): Promise<FullScan> {
   });
   const unused = computeUnused(infos, usedIds);
 
-  return { unused, brokenAll, occurrencesAll, selectionIds: collectSelectionIds(), currentPageId: figma.currentPage.id };
+  return { unused, brokenAll, occurrencesAll };
 }
 
 function filterByScope(scope: Scope): ScanResult {
   if (!lastScan) return { scope, summary: { unused: 0, broken: 0, hardcoded: 0 }, unused: [], broken: [], hardcoded: [] };
+  const currentPageId = figma.currentPage.id;
+  const selIds = scope === 'selection' ? collectSelectionIds() : null;
   const inScope = (nodeId: string, pageId: string) =>
     scope === 'document' ? true :
-    scope === 'page' ? pageId === lastScan!.currentPageId :
-    lastScan!.selectionIds.has(nodeId);
+    scope === 'page' ? pageId === currentPageId :
+    !!selIds && selIds.has(nodeId);
   const broken = lastScan.brokenAll.filter(b => inScope(b.nodeId, b.pageId));
   const occ = lastScan.occurrencesAll.filter(o => inScope(o.nodeId, o.pageId));
   const hardcoded: HardcodedGroup[] = groupHardcoded(occ);

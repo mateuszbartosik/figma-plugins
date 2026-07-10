@@ -186,7 +186,7 @@
         if (bv) {
           for (const field of Object.keys(bv)) {
             const entry = bv[field];
-            const aliases = Array.isArray(entry) ? entry : [entry];
+            const aliases = field === "componentProperties" && entry && typeof entry === "object" && !Array.isArray(entry) ? Object.values(entry) : Array.isArray(entry) ? entry : [entry];
             for (const a of aliases) {
               if (a && typeof a.id === "string") {
                 usedIds.add(a.id);
@@ -209,9 +209,9 @@
         if ("cornerRadius" in node) {
           const cr = node.cornerRadius;
           if (cr !== figma.mixed && typeof cr === "number") {
-            if (cr > 0 && !(bv == null ? void 0 : bv.topLeftRadius))
+            if (cr > 0 && !(bv == null ? void 0 : bv.cornerRadius) && !(bv == null ? void 0 : bv.topLeftRadius))
               pushNumberOccurrence(node, page, "radius", "cornerRadius", cr, occ);
-          } else if (cr === figma.mixed) {
+          } else if (cr === figma.mixed && "topLeftRadius" in node) {
             for (const f of ["topLeftRadius", "topRightRadius", "bottomLeftRadius", "bottomRightRadius"]) {
               const val = node[f];
               if (typeof val === "number" && val > 0 && !(bv == null ? void 0 : bv[f]))
@@ -310,13 +310,15 @@
             };
           });
           const unused = computeUnused(infos, usedIds);
-          return { unused, brokenAll, occurrencesAll, selectionIds: collectSelectionIds(), currentPageId: figma.currentPage.id };
+          return { unused, brokenAll, occurrencesAll };
         });
       }
       function filterByScope(scope) {
         if (!lastScan)
           return { scope, summary: { unused: 0, broken: 0, hardcoded: 0 }, unused: [], broken: [], hardcoded: [] };
-        const inScope = (nodeId, pageId) => scope === "document" ? true : scope === "page" ? pageId === lastScan.currentPageId : lastScan.selectionIds.has(nodeId);
+        const currentPageId = figma.currentPage.id;
+        const selIds = scope === "selection" ? collectSelectionIds() : null;
+        const inScope = (nodeId, pageId) => scope === "document" ? true : scope === "page" ? pageId === currentPageId : !!selIds && selIds.has(nodeId);
         const broken = lastScan.brokenAll.filter((b) => inScope(b.nodeId, b.pageId));
         const occ = lastScan.occurrencesAll.filter((o) => inScope(o.nodeId, o.pageId));
         const hardcoded = groupHardcoded(occ);
