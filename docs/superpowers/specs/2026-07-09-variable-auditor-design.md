@@ -146,9 +146,9 @@ Categories and fields:
 | **Corner radius** | `cornerRadius`-bearing | `topLeft/Right`, `bottomLeft/Right` (or uniform) | skip value `0` |
 | **Stroke weight** | nodes **with** strokes | `strokeWeight` (per-side if mixed) | only if strokes present |
 | **Spacing** | `layoutMode !== 'NONE'` | `paddingLeft/Right/Top/Bottom`, `itemSpacing`, `counterAxisSpacing` | skip value `0` |
-| **Typography** | `TEXT` | `fontSize`, `lineHeight`, `letterSpacing` | skip `figma.mixed` nodes |
+| **Typography** | `TEXT` | `fontSize`, `lineHeight`, `letterSpacing` | skip `figma.mixed` nodes; skip `letterSpacing` 0 (intentional default) |
 
-Skipping zeros for radius/spacing avoids near-universal noise (binding a `0` is rare).
+Skipping zeros for radius/spacing — and `letterSpacing` 0 (the ubiquitous intentional default) — avoids near-universal noise (binding a `0` is rare).
 
 ### 5.5 Scope filtering
 The full cached result is filtered for display:

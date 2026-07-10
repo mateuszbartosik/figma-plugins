@@ -283,7 +283,7 @@
             pushNumberOccurrence(node, page, "fontSize", "fontSize", t.fontSize, occ);
           if (t.lineHeight !== figma.mixed && t.lineHeight.unit && t.lineHeight.unit !== "AUTO" && !(bv == null ? void 0 : bv.lineHeight))
             pushNumberOccurrence(node, page, "lineHeight", "lineHeight", t.lineHeight.value, occ);
-          if (t.letterSpacing !== figma.mixed && typeof t.letterSpacing.value === "number" && !(bv == null ? void 0 : bv.letterSpacing))
+          if (t.letterSpacing !== figma.mixed && typeof t.letterSpacing.value === "number" && t.letterSpacing.value !== 0 && !(bv == null ? void 0 : bv.letterSpacing))
             pushNumberOccurrence(node, page, "letterSpacing", "letterSpacing", t.letterSpacing.value, occ);
         }
       }

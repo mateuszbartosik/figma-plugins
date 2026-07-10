@@ -115,7 +115,8 @@ function collectNode(
       pushNumberOccurrence(node, page, 'fontSize', 'fontSize', t.fontSize, occ);
     if (t.lineHeight !== figma.mixed && (t.lineHeight as any).unit && (t.lineHeight as any).unit !== 'AUTO' && !bv?.lineHeight)
       pushNumberOccurrence(node, page, 'lineHeight', 'lineHeight', (t.lineHeight as any).value, occ);
-    if (t.letterSpacing !== figma.mixed && typeof (t.letterSpacing as any).value === 'number' && !bv?.letterSpacing)
+    // Letter spacing 0 is the default and almost always intentional — skip it as noise.
+    if (t.letterSpacing !== figma.mixed && typeof (t.letterSpacing as any).value === 'number' && (t.letterSpacing as any).value !== 0 && !bv?.letterSpacing)
       pushNumberOccurrence(node, page, 'letterSpacing', 'letterSpacing', (t.letterSpacing as any).value, occ);
   }
 }
