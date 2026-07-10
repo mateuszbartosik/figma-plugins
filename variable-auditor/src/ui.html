@@ -342,7 +342,7 @@
   document.querySelectorAll('.chk-check').forEach(function (cb) {
     cb.addEventListener('change', function () {
       state.checks[cb.dataset.check] = cb.checked;
-      setBusy(true);
+      if (state.scanned) setBusy(true); // pre-scan: just persist; a scan isn't triggered, so don't disable the Scan button
       post({ type: 'set-checks', checks: state.checks });
     });
   });
