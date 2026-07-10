@@ -209,7 +209,7 @@
       </div>
 
       <div class="foot">
-        <span>Scanned <strong>Page</strong> · 48 issues found</span>
+        <span id="foot-status">Scanned <strong>Page</strong> · 48 issues found</span>
         <span class="ok"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-4-4"/></svg>Ready</span>
       </div>
 
@@ -258,7 +258,7 @@
     var m = ev.data.pluginMessage; if (!m) return;
     if (m.type === 'scan-result') { setBusy(false); state.result = m.result; render(m.result); }
     else if (m.type === 'candidates') showPicker(m);
-    else if (m.type === 'action-result') { if (m.removedVariableIds || m.replacedValueKey) rescan(); }
+    else if (m.type === 'action-result') { if (m.message) toast(m.message); if (m.removedVariableIds || m.replacedValueKey) rescan(); }
     else if (m.type === 'error') { setBusy(false); toast(m.message); }
   };
 
@@ -266,6 +266,10 @@
     document.getElementById('m-unused').textContent = r.summary.unused;
     document.getElementById('m-broken').textContent = r.summary.broken;
     document.getElementById('m-hardcoded').textContent = r.summary.hardcoded;
+    var scopeLabel = { selection: 'Selection', page: 'Page', document: 'Document' }[r.scope] || r.scope;
+    var total = r.summary.unused + r.summary.broken + r.summary.hardcoded;
+    var fs = document.getElementById('foot-status');
+    if (fs) fs.innerHTML = 'Scanned <strong>' + esc(scopeLabel) + '</strong> · ' + total + ' issue' + (total === 1 ? '' : 's') + ' found';
     renderUnused(r.unused);
     renderBroken(r.broken);
     renderHardcoded(r.hardcoded);
@@ -296,7 +300,7 @@
       var row = el('div', 'row');
       var left = v.colorHex
         ? '<div class="swatch" style="background:' + v.colorHex + '"></div>'
-        : '<div class="tglyph">' + (v.valuePreview.length <= 3 ? v.valuePreview : '#') + '</div>';
+        : '<div class="tglyph">' + (v.valuePreview.length <= 3 ? esc(v.valuePreview) : '#') + '</div>';
       row.innerHTML = left +
         '<div class="rmain"><div class="rname">' + esc(v.name) + '</div><div class="rmeta">' + esc(v.collectionName) + ' · ' + cap(v.resolvedType) + '</div></div>' +
         '<div class="rval">' + esc(v.valuePreview) + '</div>' +
@@ -334,7 +338,8 @@
 
   function renderHardcoded(groups) {
     var card = document.getElementById('card-hardcoded'); card.hidden = false; card.innerHTML = '';
-    card.appendChild(sectionHeader('code', 'Hardcoded values', groups.length, TINT.amber));
+    var hardcodedTotal = groups.reduce(function (s, g) { return s + g.count; }, 0);
+    card.appendChild(sectionHeader('code', 'Hardcoded values', hardcodedTotal, TINT.amber));
     var body = el('div', 'swrap'); var sb = el('div', 'sbody'); var inner = el('div', 'sbody-inner');
     var chips = el('div', 'filters');
     FILTERS.forEach(function (f) {
