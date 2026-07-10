@@ -14,6 +14,16 @@ Generates a documentation frame directly on the canvas from an existing componen
 
 The frame width adapts to the widest variant so nothing clips or overflows.
 
+### [`variable-auditor`](./variable-auditor)
+
+Audits variable hygiene in a file. Scans for **unused variables**, **broken references** (layers bound to a deleted variable), and **hardcoded values** (colors, corner radius, stroke weight, auto-layout spacing, and typography that aren't bound to a variable). Scope the scan to the current selection, page, or whole document, then:
+
+- **Jump** to any layer on canvas from the plugin
+- **Replace** a hardcoded value — or a whole group of them — with a matching variable (exact matches suggested first)
+- **Delete** unused variables in one click
+
+Results group identical values together (e.g. `#FFFFFF · 14 layers`) so large files stay manageable.
+
 ## Installation
 
 Each plugin is loaded locally via Figma's developer mode — no Figma Community listing required.
