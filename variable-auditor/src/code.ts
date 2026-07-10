@@ -5,10 +5,19 @@ import {
 } from './analysis.ts';
 import type {
   Scope, Occurrence, BrokenReference, UnusedVariable, HardcodedGroup,
-  ScanResult, UIToPlugin,
+  ScanResult, UIToPlugin, Checks,
 } from './types.ts';
 
 figma.showUI(__html__, { width: 404, height: 660 });
+
+let checks: Checks = { unused: true, broken: true, hardcoded: true };
+let lastScope: Scope = 'page';
+const CHECKS_KEY = 'variable-auditor:checks';
+
+(async () => {
+  try { const saved = await figma.clientStorage.getAsync(CHECKS_KEY); if (saved) checks = { ...checks, ...saved }; } catch (e) {}
+  figma.ui.postMessage({ type: 'settings', checks });
+})();
 
 interface FullScan {
   unused: UnusedVariable[];
@@ -54,6 +63,7 @@ function pushNumberOccurrence(
 function collectNode(
   node: SceneNode, page: PageNode,
   usedIds: Set<string>, refs: { id: string; ref: BrokenReference }[], occ: Occurrence[],
+  collectHardcoded: boolean,
 ) {
   const bv = (node as any).boundVariables as Record<string, any> | undefined;
   if (bv) {
@@ -74,50 +84,52 @@ function collectNode(
     }
   }
 
-  // Colors
-  if ('fills' in node && (node as any).fills !== figma.mixed) pushColorOccurrences(node, page, 'fills', occ);
-  if ('strokes' in node && Array.isArray((node as any).strokes)) pushColorOccurrences(node, page, 'strokes', occ);
+  if (collectHardcoded) {
+    // Colors
+    if ('fills' in node && (node as any).fills !== figma.mixed) pushColorOccurrences(node, page, 'fills', occ);
+    if ('strokes' in node && Array.isArray((node as any).strokes)) pushColorOccurrences(node, page, 'strokes', occ);
 
-  // Corner radius (uniform primary; per-corner when mixed)
-  if ('cornerRadius' in node) {
-    const cr = (node as any).cornerRadius;
-    if (cr !== figma.mixed && typeof cr === 'number') {
-      if (cr > 0 && !bv?.cornerRadius && !bv?.topLeftRadius) pushNumberOccurrence(node, page, 'radius', 'cornerRadius', cr, occ);
-    } else if (cr === figma.mixed && 'topLeftRadius' in node) {
-      for (const f of ['topLeftRadius','topRightRadius','bottomLeftRadius','bottomRightRadius'] as const) {
-        const val = (node as any)[f];
-        if (typeof val === 'number' && val > 0 && !bv?.[f]) pushNumberOccurrence(node, page, 'radius', f, val, occ);
+    // Corner radius (uniform primary; per-corner when mixed)
+    if ('cornerRadius' in node) {
+      const cr = (node as any).cornerRadius;
+      if (cr !== figma.mixed && typeof cr === 'number') {
+        if (cr > 0 && !bv?.cornerRadius && !bv?.topLeftRadius) pushNumberOccurrence(node, page, 'radius', 'cornerRadius', cr, occ);
+      } else if (cr === figma.mixed && 'topLeftRadius' in node) {
+        for (const f of ['topLeftRadius','topRightRadius','bottomLeftRadius','bottomRightRadius'] as const) {
+          const val = (node as any)[f];
+          if (typeof val === 'number' && val > 0 && !bv?.[f]) pushNumberOccurrence(node, page, 'radius', f, val, occ);
+        }
       }
     }
-  }
 
-  // Stroke weight (only if strokes present, uniform)
-  if ('strokeWeight' in node && Array.isArray((node as any).strokes) && (node as any).strokes.length > 0) {
-    const sw = (node as any).strokeWeight;
-    if (sw !== figma.mixed && typeof sw === 'number' && sw > 0 && !bv?.strokeWeight) {
-      pushNumberOccurrence(node, page, 'strokeWeight', 'strokeWeight', sw, occ);
+    // Stroke weight (only if strokes present, uniform)
+    if ('strokeWeight' in node && Array.isArray((node as any).strokes) && (node as any).strokes.length > 0) {
+      const sw = (node as any).strokeWeight;
+      if (sw !== figma.mixed && typeof sw === 'number' && sw > 0 && !bv?.strokeWeight) {
+        pushNumberOccurrence(node, page, 'strokeWeight', 'strokeWeight', sw, occ);
+      }
     }
-  }
 
-  // Auto-layout spacing
-  if ('layoutMode' in node && (node as any).layoutMode !== 'NONE') {
-    const spacingFields = ['paddingLeft','paddingRight','paddingTop','paddingBottom','itemSpacing','counterAxisSpacing'] as const;
-    for (const f of spacingFields) {
-      const val = (node as any)[f];
-      if (typeof val === 'number' && val > 0 && !bv?.[f]) pushNumberOccurrence(node, page, 'spacing', f, val, occ);
+    // Auto-layout spacing
+    if ('layoutMode' in node && (node as any).layoutMode !== 'NONE') {
+      const spacingFields = ['paddingLeft','paddingRight','paddingTop','paddingBottom','itemSpacing','counterAxisSpacing'] as const;
+      for (const f of spacingFields) {
+        const val = (node as any)[f];
+        if (typeof val === 'number' && val > 0 && !bv?.[f]) pushNumberOccurrence(node, page, 'spacing', f, val, occ);
+      }
     }
-  }
 
-  // Typography (skip mixed)
-  if (node.type === 'TEXT') {
-    const t = node as TextNode;
-    if (t.fontSize !== figma.mixed && typeof t.fontSize === 'number' && !bv?.fontSize)
-      pushNumberOccurrence(node, page, 'fontSize', 'fontSize', t.fontSize, occ);
-    if (t.lineHeight !== figma.mixed && (t.lineHeight as any).unit && (t.lineHeight as any).unit !== 'AUTO' && !bv?.lineHeight)
-      pushNumberOccurrence(node, page, 'lineHeight', 'lineHeight', (t.lineHeight as any).value, occ);
-    // Letter spacing 0 is the default and almost always intentional — skip it as noise.
-    if (t.letterSpacing !== figma.mixed && typeof (t.letterSpacing as any).value === 'number' && (t.letterSpacing as any).value !== 0 && !bv?.letterSpacing)
-      pushNumberOccurrence(node, page, 'letterSpacing', 'letterSpacing', (t.letterSpacing as any).value, occ);
+    // Typography (skip mixed)
+    if (node.type === 'TEXT') {
+      const t = node as TextNode;
+      if (t.fontSize !== figma.mixed && typeof t.fontSize === 'number' && !bv?.fontSize)
+        pushNumberOccurrence(node, page, 'fontSize', 'fontSize', t.fontSize, occ);
+      if (t.lineHeight !== figma.mixed && (t.lineHeight as any).unit && (t.lineHeight as any).unit !== 'AUTO' && !bv?.lineHeight)
+        pushNumberOccurrence(node, page, 'lineHeight', 'lineHeight', (t.lineHeight as any).value, occ);
+      // Letter spacing 0 is the default and almost always intentional — skip it as noise.
+      if (t.letterSpacing !== figma.mixed && typeof (t.letterSpacing as any).value === 'number' && (t.letterSpacing as any).value !== 0 && !bv?.letterSpacing)
+        pushNumberOccurrence(node, page, 'letterSpacing', 'letterSpacing', (t.letterSpacing as any).value, occ);
+    }
   }
 }
 
@@ -132,16 +144,21 @@ async function fullScan(): Promise<FullScan> {
   figma.skipInvisibleInstanceChildren = true;
   await figma.loadAllPagesAsync();
 
-  const localRaw = await figma.variables.getLocalVariablesAsync();
-  const collections = await figma.variables.getLocalVariableCollectionsAsync();
-  const collName = new Map(collections.map(c => [c.id, c.name]));
-
   const usedIds = new Set<string>();
-  // variable→variable alias usage
-  for (const v of localRaw) {
-    for (const modeId of Object.keys(v.valuesByMode)) {
-      const val = v.valuesByMode[modeId];
-      if (isAliasValue(val)) usedIds.add(val.id);
+  let localRaw: Variable[] = [];
+  let collName = new Map<string, string>();
+
+  if (checks.unused) {
+    localRaw = await figma.variables.getLocalVariablesAsync();
+    const collections = await figma.variables.getLocalVariableCollectionsAsync();
+    collName = new Map(collections.map(c => [c.id, c.name]));
+
+    // variable→variable alias usage
+    for (const v of localRaw) {
+      for (const modeId of Object.keys(v.valuesByMode)) {
+        const val = v.valuesByMode[modeId];
+        if (isAliasValue(val)) usedIds.add(val.id);
+      }
     }
   }
 
@@ -151,35 +168,40 @@ async function fullScan(): Promise<FullScan> {
   for (const page of figma.root.children) {
     const nodes = (page as PageNode).findAll(() => true);
     for (const node of nodes) {
-      collectNode(node as SceneNode, page as PageNode, usedIds, refs, occurrencesAll);
+      collectNode(node as SceneNode, page as PageNode, usedIds, refs, occurrencesAll, checks.hardcoded);
       if ((++scanned % 800) === 0) figma.ui.postMessage({ type: 'scan-progress', scanned });
     }
   }
 
   // Broken references: resolve each unique referenced id once.
   const brokenAll: BrokenReference[] = [];
-  const existence = new Map<string, boolean>();
-  for (const { id } of refs) {
-    if (existence.has(id)) continue;
-    const v = await figma.variables.getVariableByIdAsync(id);
-    existence.set(id, v !== null);
+  if (checks.broken) {
+    const existence = new Map<string, boolean>();
+    for (const { id } of refs) {
+      if (existence.has(id)) continue;
+      const v = await figma.variables.getVariableByIdAsync(id);
+      existence.set(id, v !== null);
+    }
+    for (const { id, ref } of refs) if (!existence.get(id)) brokenAll.push(ref);
   }
-  for (const { id, ref } of refs) if (!existence.get(id)) brokenAll.push(ref);
 
   // Unused
-  const firstModeValue = (v: Variable): unknown => v.valuesByMode[Object.keys(v.valuesByMode)[0]];
-  const infos: LocalVarInfo[] = localRaw.map(v => {
-    const isColor = v.resolvedType === 'COLOR';
-    const mv = firstModeValue(v);
-    const colorHex = isColor && mv && typeof mv === 'object' && !isAliasValue(mv)
-      ? rgbaToHex(mv as any) : undefined;
-    const valuePreview = colorHex ?? (typeof mv === 'number' ? formatNumber(mv) : isAliasValue(mv) ? '→ alias' : String(mv));
-    return {
-      id: v.id, name: v.name, collectionName: collName.get(v.variableCollectionId) ?? '—',
-      resolvedType: v.resolvedType, remote: v.remote, valuePreview, colorHex,
-    };
-  });
-  const unused = computeUnused(infos, usedIds);
+  let unused: UnusedVariable[] = [];
+  if (checks.unused) {
+    const firstModeValue = (v: Variable): unknown => v.valuesByMode[Object.keys(v.valuesByMode)[0]];
+    const infos: LocalVarInfo[] = localRaw.map(v => {
+      const isColor = v.resolvedType === 'COLOR';
+      const mv = firstModeValue(v);
+      const colorHex = isColor && mv && typeof mv === 'object' && !isAliasValue(mv)
+        ? rgbaToHex(mv as any) : undefined;
+      const valuePreview = colorHex ?? (typeof mv === 'number' ? formatNumber(mv) : isAliasValue(mv) ? '→ alias' : String(mv));
+      return {
+        id: v.id, name: v.name, collectionName: collName.get(v.variableCollectionId) ?? '—',
+        resolvedType: v.resolvedType, remote: v.remote, valuePreview, colorHex,
+      };
+    });
+    unused = computeUnused(infos, usedIds);
+  }
 
   return { unused, brokenAll, occurrencesAll };
 }
@@ -221,11 +243,18 @@ async function applyBinding(node: SceneNode, o: Occurrence, variable: Variable):
 figma.ui.onmessage = async (msg: UIToPlugin) => {
   try {
     if (msg.type === 'scan') {
+      lastScope = msg.scope;
       lastScan = await fullScan();
       figma.ui.postMessage({ type: 'scan-result', result: filterByScope(msg.scope) });
     } else if (msg.type === 'set-scope') {
+      lastScope = msg.scope;
       if (!lastScan) lastScan = await fullScan();
       figma.ui.postMessage({ type: 'scan-result', result: filterByScope(msg.scope) });
+    } else if (msg.type === 'set-checks') {
+      checks = msg.checks;
+      figma.clientStorage.setAsync(CHECKS_KEY, checks).catch(() => {});
+      lastScan = await fullScan();
+      figma.ui.postMessage({ type: 'scan-result', result: filterByScope(lastScope) });
     } else if (msg.type === 'navigate') {
       const node = await figma.getNodeByIdAsync(msg.nodeId);
       if (!node) { figma.ui.postMessage({ type: 'error', message: 'That layer no longer exists — rescan.' }); return; }

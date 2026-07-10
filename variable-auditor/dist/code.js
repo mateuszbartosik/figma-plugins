@@ -179,6 +179,18 @@
     "src/code.ts"(exports) {
       init_analysis();
       figma.showUI(__html__, { width: 404, height: 660 });
+      var checks = { unused: true, broken: true, hardcoded: true };
+      var lastScope = "page";
+      var CHECKS_KEY = "variable-auditor:checks";
+      (() => __async(exports, null, function* () {
+        try {
+          const saved = yield figma.clientStorage.getAsync(CHECKS_KEY);
+          if (saved)
+            checks = __spreadValues(__spreadValues({}, checks), saved);
+        } catch (e) {
+        }
+        figma.ui.postMessage({ type: "settings", checks });
+      }))();
       var lastScan = null;
       function isAliasValue(v) {
         return typeof v === "object" && v !== null && v.type === "VARIABLE_ALIAS";
@@ -225,7 +237,7 @@
           num
         });
       }
-      function collectNode(node, page, usedIds, refs, occ) {
+      function collectNode(node, page, usedIds, refs, occ, collectHardcoded) {
         const bv = node.boundVariables;
         if (bv) {
           for (const field of Object.keys(bv)) {
@@ -246,45 +258,47 @@
             }
           }
         }
-        if ("fills" in node && node.fills !== figma.mixed)
-          pushColorOccurrences(node, page, "fills", occ);
-        if ("strokes" in node && Array.isArray(node.strokes))
-          pushColorOccurrences(node, page, "strokes", occ);
-        if ("cornerRadius" in node) {
-          const cr = node.cornerRadius;
-          if (cr !== figma.mixed && typeof cr === "number") {
-            if (cr > 0 && !(bv == null ? void 0 : bv.cornerRadius) && !(bv == null ? void 0 : bv.topLeftRadius))
-              pushNumberOccurrence(node, page, "radius", "cornerRadius", cr, occ);
-          } else if (cr === figma.mixed && "topLeftRadius" in node) {
-            for (const f of ["topLeftRadius", "topRightRadius", "bottomLeftRadius", "bottomRightRadius"]) {
-              const val = node[f];
-              if (typeof val === "number" && val > 0 && !(bv == null ? void 0 : bv[f]))
-                pushNumberOccurrence(node, page, "radius", f, val, occ);
+        if (collectHardcoded) {
+          if ("fills" in node && node.fills !== figma.mixed)
+            pushColorOccurrences(node, page, "fills", occ);
+          if ("strokes" in node && Array.isArray(node.strokes))
+            pushColorOccurrences(node, page, "strokes", occ);
+          if ("cornerRadius" in node) {
+            const cr = node.cornerRadius;
+            if (cr !== figma.mixed && typeof cr === "number") {
+              if (cr > 0 && !(bv == null ? void 0 : bv.cornerRadius) && !(bv == null ? void 0 : bv.topLeftRadius))
+                pushNumberOccurrence(node, page, "radius", "cornerRadius", cr, occ);
+            } else if (cr === figma.mixed && "topLeftRadius" in node) {
+              for (const f of ["topLeftRadius", "topRightRadius", "bottomLeftRadius", "bottomRightRadius"]) {
+                const val = node[f];
+                if (typeof val === "number" && val > 0 && !(bv == null ? void 0 : bv[f]))
+                  pushNumberOccurrence(node, page, "radius", f, val, occ);
+              }
             }
           }
-        }
-        if ("strokeWeight" in node && Array.isArray(node.strokes) && node.strokes.length > 0) {
-          const sw = node.strokeWeight;
-          if (sw !== figma.mixed && typeof sw === "number" && sw > 0 && !(bv == null ? void 0 : bv.strokeWeight)) {
-            pushNumberOccurrence(node, page, "strokeWeight", "strokeWeight", sw, occ);
+          if ("strokeWeight" in node && Array.isArray(node.strokes) && node.strokes.length > 0) {
+            const sw = node.strokeWeight;
+            if (sw !== figma.mixed && typeof sw === "number" && sw > 0 && !(bv == null ? void 0 : bv.strokeWeight)) {
+              pushNumberOccurrence(node, page, "strokeWeight", "strokeWeight", sw, occ);
+            }
           }
-        }
-        if ("layoutMode" in node && node.layoutMode !== "NONE") {
-          const spacingFields = ["paddingLeft", "paddingRight", "paddingTop", "paddingBottom", "itemSpacing", "counterAxisSpacing"];
-          for (const f of spacingFields) {
-            const val = node[f];
-            if (typeof val === "number" && val > 0 && !(bv == null ? void 0 : bv[f]))
-              pushNumberOccurrence(node, page, "spacing", f, val, occ);
+          if ("layoutMode" in node && node.layoutMode !== "NONE") {
+            const spacingFields = ["paddingLeft", "paddingRight", "paddingTop", "paddingBottom", "itemSpacing", "counterAxisSpacing"];
+            for (const f of spacingFields) {
+              const val = node[f];
+              if (typeof val === "number" && val > 0 && !(bv == null ? void 0 : bv[f]))
+                pushNumberOccurrence(node, page, "spacing", f, val, occ);
+            }
           }
-        }
-        if (node.type === "TEXT") {
-          const t = node;
-          if (t.fontSize !== figma.mixed && typeof t.fontSize === "number" && !(bv == null ? void 0 : bv.fontSize))
-            pushNumberOccurrence(node, page, "fontSize", "fontSize", t.fontSize, occ);
-          if (t.lineHeight !== figma.mixed && t.lineHeight.unit && t.lineHeight.unit !== "AUTO" && !(bv == null ? void 0 : bv.lineHeight))
-            pushNumberOccurrence(node, page, "lineHeight", "lineHeight", t.lineHeight.value, occ);
-          if (t.letterSpacing !== figma.mixed && typeof t.letterSpacing.value === "number" && t.letterSpacing.value !== 0 && !(bv == null ? void 0 : bv.letterSpacing))
-            pushNumberOccurrence(node, page, "letterSpacing", "letterSpacing", t.letterSpacing.value, occ);
+          if (node.type === "TEXT") {
+            const t = node;
+            if (t.fontSize !== figma.mixed && typeof t.fontSize === "number" && !(bv == null ? void 0 : bv.fontSize))
+              pushNumberOccurrence(node, page, "fontSize", "fontSize", t.fontSize, occ);
+            if (t.lineHeight !== figma.mixed && t.lineHeight.unit && t.lineHeight.unit !== "AUTO" && !(bv == null ? void 0 : bv.lineHeight))
+              pushNumberOccurrence(node, page, "lineHeight", "lineHeight", t.lineHeight.value, occ);
+            if (t.letterSpacing !== figma.mixed && typeof t.letterSpacing.value === "number" && t.letterSpacing.value !== 0 && !(bv == null ? void 0 : bv.letterSpacing))
+              pushNumberOccurrence(node, page, "letterSpacing", "letterSpacing", t.letterSpacing.value, occ);
+          }
         }
       }
       function collectSelectionIds() {
@@ -303,15 +317,19 @@
         return __async(this, null, function* () {
           figma.skipInvisibleInstanceChildren = true;
           yield figma.loadAllPagesAsync();
-          const localRaw = yield figma.variables.getLocalVariablesAsync();
-          const collections = yield figma.variables.getLocalVariableCollectionsAsync();
-          const collName = new Map(collections.map((c) => [c.id, c.name]));
           const usedIds = /* @__PURE__ */ new Set();
-          for (const v of localRaw) {
-            for (const modeId of Object.keys(v.valuesByMode)) {
-              const val = v.valuesByMode[modeId];
-              if (isAliasValue(val))
-                usedIds.add(val.id);
+          let localRaw = [];
+          let collName = /* @__PURE__ */ new Map();
+          if (checks.unused) {
+            localRaw = yield figma.variables.getLocalVariablesAsync();
+            const collections = yield figma.variables.getLocalVariableCollectionsAsync();
+            collName = new Map(collections.map((c) => [c.id, c.name]));
+            for (const v of localRaw) {
+              for (const modeId of Object.keys(v.valuesByMode)) {
+                const val = v.valuesByMode[modeId];
+                if (isAliasValue(val))
+                  usedIds.add(val.id);
+              }
             }
           }
           const refs = [];
@@ -320,40 +338,45 @@
           for (const page of figma.root.children) {
             const nodes = page.findAll(() => true);
             for (const node of nodes) {
-              collectNode(node, page, usedIds, refs, occurrencesAll);
+              collectNode(node, page, usedIds, refs, occurrencesAll, checks.hardcoded);
               if (++scanned % 800 === 0)
                 figma.ui.postMessage({ type: "scan-progress", scanned });
             }
           }
           const brokenAll = [];
-          const existence = /* @__PURE__ */ new Map();
-          for (const { id } of refs) {
-            if (existence.has(id))
-              continue;
-            const v = yield figma.variables.getVariableByIdAsync(id);
-            existence.set(id, v !== null);
+          if (checks.broken) {
+            const existence = /* @__PURE__ */ new Map();
+            for (const { id } of refs) {
+              if (existence.has(id))
+                continue;
+              const v = yield figma.variables.getVariableByIdAsync(id);
+              existence.set(id, v !== null);
+            }
+            for (const { id, ref } of refs)
+              if (!existence.get(id))
+                brokenAll.push(ref);
           }
-          for (const { id, ref } of refs)
-            if (!existence.get(id))
-              brokenAll.push(ref);
-          const firstModeValue = (v) => v.valuesByMode[Object.keys(v.valuesByMode)[0]];
-          const infos = localRaw.map((v) => {
-            var _a;
-            const isColor = v.resolvedType === "COLOR";
-            const mv = firstModeValue(v);
-            const colorHex = isColor && mv && typeof mv === "object" && !isAliasValue(mv) ? rgbaToHex(mv) : void 0;
-            const valuePreview = colorHex != null ? colorHex : typeof mv === "number" ? formatNumber(mv) : isAliasValue(mv) ? "\u2192 alias" : String(mv);
-            return {
-              id: v.id,
-              name: v.name,
-              collectionName: (_a = collName.get(v.variableCollectionId)) != null ? _a : "\u2014",
-              resolvedType: v.resolvedType,
-              remote: v.remote,
-              valuePreview,
-              colorHex
-            };
-          });
-          const unused = computeUnused(infos, usedIds);
+          let unused = [];
+          if (checks.unused) {
+            const firstModeValue = (v) => v.valuesByMode[Object.keys(v.valuesByMode)[0]];
+            const infos = localRaw.map((v) => {
+              var _a;
+              const isColor = v.resolvedType === "COLOR";
+              const mv = firstModeValue(v);
+              const colorHex = isColor && mv && typeof mv === "object" && !isAliasValue(mv) ? rgbaToHex(mv) : void 0;
+              const valuePreview = colorHex != null ? colorHex : typeof mv === "number" ? formatNumber(mv) : isAliasValue(mv) ? "\u2192 alias" : String(mv);
+              return {
+                id: v.id,
+                name: v.name,
+                collectionName: (_a = collName.get(v.variableCollectionId)) != null ? _a : "\u2014",
+                resolvedType: v.resolvedType,
+                remote: v.remote,
+                valuePreview,
+                colorHex
+              };
+            });
+            unused = computeUnused(infos, usedIds);
+          }
           return { unused, brokenAll, occurrencesAll };
         });
       }
@@ -398,12 +421,20 @@
         var _a, _b, _c, _d, _e;
         try {
           if (msg.type === "scan") {
+            lastScope = msg.scope;
             lastScan = yield fullScan();
             figma.ui.postMessage({ type: "scan-result", result: filterByScope(msg.scope) });
           } else if (msg.type === "set-scope") {
+            lastScope = msg.scope;
             if (!lastScan)
               lastScan = yield fullScan();
             figma.ui.postMessage({ type: "scan-result", result: filterByScope(msg.scope) });
+          } else if (msg.type === "set-checks") {
+            checks = msg.checks;
+            figma.clientStorage.setAsync(CHECKS_KEY, checks).catch(() => {
+            });
+            lastScan = yield fullScan();
+            figma.ui.postMessage({ type: "scan-result", result: filterByScope(lastScope) });
           } else if (msg.type === "navigate") {
             const node = yield figma.getNodeByIdAsync(msg.nodeId);
             if (!node) {

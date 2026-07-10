@@ -158,10 +158,12 @@
   .toast{position:absolute;left:50%;bottom:56px;transform:translateX(-50%) translateY(10px);background:var(--text);color:#fff;font-size:11.5px;padding:8px 14px;border-radius:10px;opacity:0;transition:.2s;pointer-events:none;z-index:11;}
   .toast.show{opacity:1;transform:translateX(-50%);}
   #confirm{align-items:center;justify-content:center;}
+  #settings{align-items:center;justify-content:center;}
   .dialog{background:var(--surface);width:calc(100% - 48px);max-width:320px;border-radius:16px;padding:18px;box-shadow:0 20px 50px -16px rgba(30,24,70,.45);}
   .dialog-title{font-size:14px;font-weight:600;margin-bottom:6px;}
   .dialog-msg{font-size:12px;color:var(--text-2);line-height:1.5;margin-bottom:16px;}
   .dialog-actions{display:flex;gap:8px;justify-content:flex-end;}
+  .setrow{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:9px 2px;font-size:13px;}
   .btn-ghost,.btn-danger{font-family:inherit;font-size:12px;font-weight:500;padding:8px 14px;border-radius:10px;cursor:pointer;border:1px solid var(--border-2);background:var(--surface);color:var(--text);}
   .btn-ghost:hover{background:var(--surface-2);}
   .btn-danger{border-color:transparent;background:var(--rose);color:#fff;}
@@ -188,6 +190,7 @@
   <span id="ic-info"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg></span>
   <span id="ic-refresh"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></span>
   <span id="ic-check"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-4-4"/></svg></span>
+  <span id="ic-settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/></svg></span>
 </div>
 
 <div class="panel">
@@ -202,7 +205,10 @@
           <div class="app-title">Variable Auditor</div>
           <div class="app-sub">Orphans &amp; hardcoded values</div>
         </div>
-        <button class="icon-btn" aria-label="Rescan">
+        <button class="icon-btn" id="btn-settings" aria-label="Settings">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/></svg>
+        </button>
+        <button class="icon-btn" id="btn-rescan" aria-label="Rescan">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
         </button>
       </div>
@@ -214,9 +220,9 @@
       </div>
 
       <div class="metrics">
-        <div class="chip"><div class="lab"><span class="dot" style="background:var(--violet)"></span>Unused</div><div class="num" id="m-unused">0</div></div>
-        <div class="chip"><div class="lab"><span class="dot" style="background:var(--rose)"></span>Broken</div><div class="num" id="m-broken">0</div></div>
-        <div class="chip"><div class="lab"><span class="dot" style="background:var(--amber)"></span>Hardcoded</div><div class="num" id="m-hardcoded">0</div></div>
+        <div class="chip" id="chip-unused"><div class="lab"><span class="dot" style="background:var(--violet)"></span>Unused</div><div class="num" id="m-unused">0</div></div>
+        <div class="chip" id="chip-broken"><div class="lab"><span class="dot" style="background:var(--rose)"></span>Broken</div><div class="num" id="m-broken">0</div></div>
+        <div class="chip" id="chip-hardcoded"><div class="lab"><span class="dot" style="background:var(--amber)"></span>Hardcoded</div><div class="num" id="m-hardcoded">0</div></div>
       </div>
 
       <div class="results" id="results">
@@ -248,11 +254,22 @@
           </div>
         </div>
       </div>
+      <div class="overlay" id="settings">
+        <div class="dialog">
+          <div class="dialog-title">Checks to run</div>
+          <label class="setrow"><span>Unused variables</span><input type="checkbox" class="chk-check" data-check="unused" checked></label>
+          <label class="setrow"><span>Broken references</span><input type="checkbox" class="chk-check" data-check="broken" checked></label>
+          <label class="setrow"><span>Hardcoded values</span><input type="checkbox" class="chk-check" data-check="hardcoded" checked></label>
+          <div class="dialog-actions">
+            <button class="btn-ghost" id="settings-done">Done</button>
+          </div>
+        </div>
+      </div>
       <div id="toast" class="toast"></div>
   </div>
 
 <script>
-  var state = { scope: 'page', result: null, pendingReplace: null };
+  var state = { scope: 'page', result: null, pendingReplace: null, checks: { unused: true, broken: true, hardcoded: true } };
   var selectedUnused = new Set();
   function post(msg) { parent.postMessage({ pluginMessage: msg }, '*'); }
   function icon(id, cls) {
@@ -271,9 +288,27 @@
       post({ type: 'set-scope', scope: state.scope });
     });
   });
-  document.querySelector('.icon-btn').addEventListener('click', rescan);
+  document.getElementById('btn-rescan').addEventListener('click', rescan);
   function rescan() { setBusy(true); post({ type: 'scan', scope: state.scope }); }
-  function setBusy(b) { document.querySelector('.icon-btn').classList.toggle('busy', b); }
+  function setBusy(b) { document.getElementById('btn-rescan').classList.toggle('busy', b); }
+
+  // --- settings dialog ---
+  document.getElementById('btn-settings').addEventListener('click', function () {
+    document.getElementById('settings').classList.add('show');
+  });
+  document.getElementById('settings-done').addEventListener('click', function () {
+    document.getElementById('settings').classList.remove('show');
+  });
+  document.getElementById('settings').addEventListener('click', function (e) {
+    if (e.target === e.currentTarget) e.currentTarget.classList.remove('show');
+  });
+  document.querySelectorAll('.chk-check').forEach(function (cb) {
+    cb.addEventListener('change', function () {
+      state.checks[cb.dataset.check] = cb.checked;
+      setBusy(true);
+      post({ type: 'set-checks', checks: state.checks });
+    });
+  });
 
   // --- accordion (delegated so it survives re-render) ---
   document.getElementById('results').addEventListener('click', function (e) {
@@ -288,12 +323,26 @@
     else if (m.type === 'candidates') showPicker(m);
     else if (m.type === 'action-result') { if (m.message) toast(m.message); if (m.removedVariableIds || m.replacedValueKey) rescan(); }
     else if (m.type === 'error') { setBusy(false); toast(m.message); }
+    else if (m.type === 'settings') {
+      state.checks = m.checks;
+      document.querySelectorAll('.chk-check').forEach(function (cb) { cb.checked = !!state.checks[cb.dataset.check]; });
+      if (state.result) render(state.result);
+    }
   };
 
   function render(r) {
     document.getElementById('m-unused').textContent = r.summary.unused;
     document.getElementById('m-broken').textContent = r.summary.broken;
     document.getElementById('m-hardcoded').textContent = r.summary.hardcoded;
+    var enabledChips = 0;
+    ['unused', 'broken', 'hardcoded'].forEach(function (k) {
+      var chip = document.getElementById('chip-' + k);
+      var on = !!state.checks[k];
+      if (chip) chip.hidden = !on;
+      if (on) enabledChips++;
+    });
+    var metricsEl = document.querySelector('.metrics');
+    if (metricsEl) metricsEl.style.gridTemplateColumns = 'repeat(' + enabledChips + ', 1fr)';
     var scopeLabel = { selection: 'Selection', page: 'Page', document: 'Document' }[r.scope] || r.scope;
     var total = r.summary.unused + r.summary.broken + r.summary.hardcoded;
     var fs = document.getElementById('foot-status');
@@ -318,8 +367,10 @@
   };
 
   function renderUnused(list) {
+    var card = document.getElementById('card-unused');
+    if (!state.checks.unused) { card.hidden = true; return; }
     selectedUnused.clear();
-    var card = document.getElementById('card-unused'); card.hidden = false; card.innerHTML = '';
+    card.hidden = false; card.innerHTML = '';
     card.appendChild(sectionHeader('ghost', 'Unused variables', list.length, TINT.violet));
     var body = el('div', 'swrap'); var sb = el('div', 'sbody'); var inner = el('div', 'sbody-inner');
     inner.appendChild(el('div', 'caveat', icon('info') +
@@ -376,7 +427,9 @@
   }
 
   function renderBroken(list) {
-    var card = document.getElementById('card-broken'); card.hidden = false; card.innerHTML = '';
+    var card = document.getElementById('card-broken');
+    if (!state.checks.broken) { card.hidden = true; return; }
+    card.hidden = false; card.innerHTML = '';
     card.appendChild(sectionHeader('triangle', 'Broken references', list.length, TINT.rose));
     var body = el('div', 'swrap'); var sb = el('div', 'sbody'); var inner = el('div', 'sbody-inner');
     if (!list.length) inner.appendChild(el('div', 'empty', 'No broken references.'));
@@ -401,7 +454,9 @@
   var activeFilters = { color: true, radiusStroke: true, spacing: true, typography: true };
 
   function renderHardcoded(groups) {
-    var card = document.getElementById('card-hardcoded'); card.hidden = false; card.innerHTML = '';
+    var card = document.getElementById('card-hardcoded');
+    if (!state.checks.hardcoded) { card.hidden = true; return; }
+    card.hidden = false; card.innerHTML = '';
     var hardcodedTotal = groups.reduce(function (s, g) { return s + g.count; }, 0);
     card.appendChild(sectionHeader('code', 'Hardcoded values', hardcodedTotal, TINT.amber));
     var body = el('div', 'swrap'); var sb = el('div', 'sbody'); var inner = el('div', 'sbody-inner');

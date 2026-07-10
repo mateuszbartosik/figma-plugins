@@ -76,9 +76,12 @@ export interface CandidateVariable {
   colorHex?: string;
 }
 
+export interface Checks { unused: boolean; broken: boolean; hardcoded: boolean }
+
 export type UIToPlugin =
   | { type: 'scan'; scope: Scope }
   | { type: 'set-scope'; scope: Scope }
+  | { type: 'set-checks'; checks: Checks }
   | { type: 'navigate'; nodeId: string; pageId: string }
   | { type: 'get-candidates'; category: HardcodedCategory; valueKey: string }
   | { type: 'replace'; category: HardcodedCategory; valueKey: string; variableId: string }
@@ -87,6 +90,7 @@ export type UIToPlugin =
 export type PluginToUI =
   | { type: 'scan-progress'; scanned: number }
   | { type: 'scan-result'; result: ScanResult }
+  | { type: 'settings'; checks: Checks }
   | { type: 'candidates'; category: HardcodedCategory; valueKey: string; candidates: CandidateVariable[] }
   | { type: 'action-result'; ok: boolean; message: string;
       removedVariableIds?: string[]; replacedValueKey?: string; replacedCount?: number; skippedCount?: number }
