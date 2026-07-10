@@ -106,6 +106,50 @@
     groups.sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
     return groups;
   }
+  function isAlias(v) {
+    return typeof v === "object" && v !== null && v.type === "VARIABLE_ALIAS";
+  }
+  function resolveVariableValue(id, modeId, varMap, seen = /* @__PURE__ */ new Set()) {
+    if (seen.has(id))
+      return null;
+    seen.add(id);
+    const v = varMap.get(id);
+    if (!v)
+      return null;
+    let val = v.valuesByMode[modeId];
+    if (val === void 0) {
+      const firstKey = Object.keys(v.valuesByMode)[0];
+      if (firstKey === void 0)
+        return null;
+      val = v.valuesByMode[firstKey];
+    }
+    if (isAlias(val))
+      return resolveVariableValue(val.id, modeId, varMap, seen);
+    return val;
+  }
+  function matchesTarget(value, target) {
+    var _a;
+    if (value === null)
+      return false;
+    if (target.kind === "number") {
+      return typeof value === "number" && Math.abs(value - target.num) < 1e-4;
+    }
+    if (typeof value !== "object")
+      return false;
+    const hex = rgbaToHex(value);
+    const op = Number.parseFloat(((_a = value.a) != null ? _a : 1).toFixed(3));
+    return hex === target.colorHex && Math.abs(op - target.opacity) < 1e-4;
+  }
+  function rankCandidates(target, candidates) {
+    return candidates.map((c) => ({
+      id: c.id,
+      name: c.name,
+      collectionName: c.collectionName,
+      valuePreview: c.valuePreview,
+      colorHex: c.colorHex,
+      exact: c.modeValues.some((v) => matchesTarget(v, target))
+    })).sort((a, b) => (b.exact ? 1 : 0) - (a.exact ? 1 : 0) || a.collectionName.localeCompare(b.collectionName) || a.name.localeCompare(b.name));
+  }
   var CATEGORY_BY_KIND, LABEL_BY_KIND;
   var init_analysis = __esm({
     "src/analysis.ts"() {
@@ -330,8 +374,30 @@
           hardcoded
         };
       }
+      function applyBinding(node, o, variable) {
+        return __async(this, null, function* () {
+          var _a;
+          if (o.kind === "color") {
+            const key = o.field;
+            const paints = node[key].slice();
+            const p = paints[(_a = o.paintIndex) != null ? _a : -1];
+            if (!p || p.type !== "SOLID")
+              throw new Error("paint gone");
+            paints[o.paintIndex] = figma.variables.setBoundVariableForPaint(p, "color", variable);
+            node[key] = paints;
+          } else if (o.field === "cornerRadius") {
+            for (const f of ["topLeftRadius", "topRightRadius", "bottomLeftRadius", "bottomRightRadius"]) {
+              node.setBoundVariable(f, variable);
+            }
+          } else {
+            if (node.type === "TEXT" && node.fontName !== figma.mixed)
+              yield figma.loadFontAsync(node.fontName);
+            node.setBoundVariable(o.field, variable);
+          }
+        });
+      }
       figma.ui.onmessage = (msg) => __async(exports, null, function* () {
-        var _a;
+        var _a, _b, _c, _d, _e;
         try {
           if (msg.type === "scan") {
             lastScan = yield fullScan();
@@ -370,9 +436,72 @@
               message: `Deleted ${removed.length} variable${removed.length === 1 ? "" : "s"}.`,
               removedVariableIds: removed
             });
+          } else if (msg.type === "get-candidates") {
+            const wantColor = msg.category === "color";
+            const type = wantColor ? "COLOR" : "FLOAT";
+            const localVars = (yield figma.variables.getLocalVariablesAsync()).filter((v) => v.resolvedType === type);
+            const collections = yield figma.variables.getLocalVariableCollectionsAsync();
+            const collName = new Map(collections.map((c) => [c.id, c.name]));
+            const varMap = new Map(localVars.map((v) => [v.id, { id: v.id, valuesByMode: v.valuesByMode }]));
+            const resolved = localVars.map((v) => {
+              var _a2;
+              const modes = Object.keys(v.valuesByMode);
+              const modeValues = modes.map((m) => resolveVariableValue(v.id, m, varMap));
+              const first = modeValues[0];
+              const colorHex = wantColor && first && typeof first === "object" ? rgbaToHex(first) : void 0;
+              const valuePreview = wantColor ? colorHex != null ? colorHex : "\u2014" : typeof first === "number" ? formatNumber(first) : "\u2014";
+              return {
+                id: v.id,
+                name: v.name,
+                collectionName: (_a2 = collName.get(v.variableCollectionId)) != null ? _a2 : "\u2014",
+                resolvedType: type,
+                valuePreview,
+                colorHex,
+                modeValues
+              };
+            });
+            const group = lastScan == null ? void 0 : lastScan.occurrencesAll.find((o) => o.valueKey === msg.valueKey);
+            const target = wantColor ? { kind: "color", colorHex: (_a = group == null ? void 0 : group.colorHex) != null ? _a : "", opacity: (_b = group == null ? void 0 : group.opacity) != null ? _b : 1 } : { kind: "number", num: (_c = group == null ? void 0 : group.num) != null ? _c : 0 };
+            figma.ui.postMessage({
+              type: "candidates",
+              category: msg.category,
+              valueKey: msg.valueKey,
+              candidates: rankCandidates(target, resolved)
+            });
+          } else if (msg.type === "replace") {
+            const variable = yield figma.variables.getVariableByIdAsync(msg.variableId);
+            if (!variable) {
+              figma.ui.postMessage({ type: "error", message: "That variable no longer exists \u2014 rescan." });
+              return;
+            }
+            const occ = ((_d = lastScan == null ? void 0 : lastScan.occurrencesAll) != null ? _d : []).filter((o) => o.valueKey === msg.valueKey);
+            let replaced = 0, skipped = 0;
+            for (const o of occ) {
+              const node = yield figma.getNodeByIdAsync(o.nodeId);
+              if (!node) {
+                skipped++;
+                continue;
+              }
+              try {
+                yield applyBinding(node, o, variable);
+                replaced++;
+              } catch (e) {
+                skipped++;
+              }
+            }
+            if (lastScan)
+              lastScan.occurrencesAll = lastScan.occurrencesAll.filter((o) => o.valueKey !== msg.valueKey);
+            figma.ui.postMessage({
+              type: "action-result",
+              ok: true,
+              message: `Replaced ${replaced}${skipped ? `, skipped ${skipped}` : ""}.`,
+              replacedValueKey: msg.valueKey,
+              replacedCount: replaced,
+              skippedCount: skipped
+            });
           }
         } catch (e) {
-          figma.ui.postMessage({ type: "error", message: String((_a = e == null ? void 0 : e.message) != null ? _a : e) });
+          figma.ui.postMessage({ type: "error", message: String((_e = e == null ? void 0 : e.message) != null ? _e : e) });
         }
       });
     }

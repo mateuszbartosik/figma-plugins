@@ -1,6 +1,7 @@
 import {
   rgbaToHex, formatNumber, groupMeta, computeUnused, groupHardcoded,
-  type LocalVarInfo,
+  resolveVariableValue, rankCandidates,
+  type LocalVarInfo, type ResolvableVar, type ResolvedCandidate,
 } from './analysis.ts';
 import type {
   Scope, Occurrence, BrokenReference, UnusedVariable, HardcodedGroup,
@@ -200,6 +201,24 @@ function filterByScope(scope: Scope): ScanResult {
   };
 }
 
+async function applyBinding(node: SceneNode, o: Occurrence, variable: Variable): Promise<void> {
+  if (o.kind === 'color') {
+    const key = o.field as 'fills' | 'strokes';
+    const paints = ((node as any)[key] as Paint[]).slice();
+    const p = paints[o.paintIndex ?? -1];
+    if (!p || p.type !== 'SOLID') throw new Error('paint gone');
+    paints[o.paintIndex!] = figma.variables.setBoundVariableForPaint(p as SolidPaint, 'color', variable);
+    (node as any)[key] = paints;
+  } else if (o.field === 'cornerRadius') {
+    for (const f of ['topLeftRadius','topRightRadius','bottomLeftRadius','bottomRightRadius'] as const) {
+      (node as any).setBoundVariable(f, variable);
+    }
+  } else {
+    if (node.type === 'TEXT' && node.fontName !== figma.mixed) await figma.loadFontAsync(node.fontName);
+    (node as any).setBoundVariable(o.field, variable);
+  }
+}
+
 figma.ui.onmessage = async (msg: UIToPlugin) => {
   try {
     if (msg.type === 'scan') {
@@ -229,7 +248,46 @@ figma.ui.onmessage = async (msg: UIToPlugin) => {
         removedVariableIds: removed,
       });
     }
-    // navigate / delete / candidates / replace added in later tasks
+    else if (msg.type === 'get-candidates') {
+      const wantColor = msg.category === 'color';
+      const type = wantColor ? 'COLOR' : 'FLOAT';
+      const localVars = (await figma.variables.getLocalVariablesAsync()).filter(v => v.resolvedType === type);
+      const collections = await figma.variables.getLocalVariableCollectionsAsync();
+      const collName = new Map(collections.map(c => [c.id, c.name]));
+      const varMap = new Map<string, ResolvableVar>(localVars.map(v => [v.id, { id: v.id, valuesByMode: v.valuesByMode as any }]));
+      const resolved: ResolvedCandidate[] = localVars.map(v => {
+        const modes = Object.keys(v.valuesByMode);
+        const modeValues = modes.map(m => resolveVariableValue(v.id, m, varMap) as any);
+        const first = modeValues[0];
+        const colorHex = wantColor && first && typeof first === 'object' ? rgbaToHex(first) : undefined;
+        const valuePreview = wantColor ? (colorHex ?? '—') : (typeof first === 'number' ? formatNumber(first) : '—');
+        return { id: v.id, name: v.name, collectionName: collName.get(v.variableCollectionId) ?? '—',
+          resolvedType: type, valuePreview, colorHex, modeValues };
+      });
+      const group = lastScan?.occurrencesAll.find(o => o.valueKey === msg.valueKey);
+      const target = wantColor
+        ? { kind: 'color' as const, colorHex: group?.colorHex ?? '', opacity: group?.opacity ?? 1 }
+        : { kind: 'number' as const, num: group?.num ?? 0 };
+      figma.ui.postMessage({ type: 'candidates', category: msg.category, valueKey: msg.valueKey,
+        candidates: rankCandidates(target, resolved) });
+    }
+    else if (msg.type === 'replace') {
+      const variable = await figma.variables.getVariableByIdAsync(msg.variableId);
+      if (!variable) { figma.ui.postMessage({ type: 'error', message: 'That variable no longer exists — rescan.' }); return; }
+      const occ = (lastScan?.occurrencesAll ?? []).filter(o => o.valueKey === msg.valueKey);
+      let replaced = 0, skipped = 0;
+      for (const o of occ) {
+        const node = await figma.getNodeByIdAsync(o.nodeId);
+        if (!node) { skipped++; continue; }
+        try { await applyBinding(node as SceneNode, o, variable); replaced++; }
+        catch { skipped++; }
+      }
+      // drop replaced occurrences from cache so a re-filter reflects reality
+      if (lastScan) lastScan.occurrencesAll = lastScan.occurrencesAll.filter(o => o.valueKey !== msg.valueKey);
+      figma.ui.postMessage({ type: 'action-result', ok: true,
+        message: `Replaced ${replaced}${skipped ? `, skipped ${skipped}` : ''}.`,
+        replacedValueKey: msg.valueKey, replacedCount: replaced, skippedCount: skipped });
+    }
   } catch (e) {
     figma.ui.postMessage({ type: 'error', message: String((e as Error)?.message ?? e) });
   }
