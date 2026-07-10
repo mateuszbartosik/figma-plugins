@@ -268,8 +268,12 @@ figma.ui.onmessage = async (msg: UIToPlugin) => {
     } else if (msg.type === 'set-checks') {
       checks = msg.checks;
       figma.clientStorage.setAsync(CHECKS_KEY, checks).catch(() => {});
-      lastScan = await fullScan();
-      figma.ui.postMessage({ type: 'scan-result', result: filterByScope(lastScope) });
+      // Only rescan if a scan already ran — before that, the empty state stays
+      // until the user clicks Scan, so there is nothing yet to recompute.
+      if (lastScan) {
+        lastScan = await fullScan();
+        figma.ui.postMessage({ type: 'scan-result', result: filterByScope(lastScope) });
+      }
     } else if (msg.type === 'navigate') {
       const node = await figma.getNodeByIdAsync(msg.nodeId);
       if (!node) { figma.ui.postMessage({ type: 'error', message: 'That layer no longer exists — rescan.' }); return; }

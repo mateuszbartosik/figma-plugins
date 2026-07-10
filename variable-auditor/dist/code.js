@@ -445,8 +445,10 @@
             checks = msg.checks;
             figma.clientStorage.setAsync(CHECKS_KEY, checks).catch(() => {
             });
-            lastScan = yield fullScan();
-            figma.ui.postMessage({ type: "scan-result", result: filterByScope(lastScope) });
+            if (lastScan) {
+              lastScan = yield fullScan();
+              figma.ui.postMessage({ type: "scan-result", result: filterByScope(lastScope) });
+            }
           } else if (msg.type === "navigate") {
             const node = yield figma.getNodeByIdAsync(msg.nodeId);
             if (!node) {

@@ -257,6 +257,9 @@ single-theme (no dark mode in v1).
   suggestions on top, then all compatible variables grouped by collection, and a
   "Replace N layers" confirm; Cancel returns.
 
+The plugin opens to an empty state with a Scan button; the first scan runs on demand
+(no auto-scan). Scope can be pre-selected before scanning.
+
 **Layout & scrolling:** the panel is a **fixed-height flex column** — header, scope,
 metrics, and footer stay pinned while **only the results region scrolls**. Result
 cards must be `flex-shrink: 0` so they keep full height instead of compressing (a
