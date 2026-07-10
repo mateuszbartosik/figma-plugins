@@ -352,6 +352,24 @@
             }
             figma.currentPage.selection = [node];
             figma.viewport.scrollAndZoomIntoView([node]);
+          } else if (msg.type === "delete-variables") {
+            const removed = [];
+            for (const id of msg.ids) {
+              const v = yield figma.variables.getVariableByIdAsync(id);
+              if (v) {
+                try {
+                  v.remove();
+                  removed.push(id);
+                } catch (e) {
+                }
+              }
+            }
+            figma.ui.postMessage({
+              type: "action-result",
+              ok: true,
+              message: `Deleted ${removed.length} variable${removed.length === 1 ? "" : "s"}.`,
+              removedVariableIds: removed
+            });
           }
         } catch (e) {
           figma.ui.postMessage({ type: "error", message: String((_a = e == null ? void 0 : e.message) != null ? _a : e) });

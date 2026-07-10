@@ -217,6 +217,17 @@ figma.ui.onmessage = async (msg: UIToPlugin) => {
       }
       figma.currentPage.selection = [node as SceneNode];
       figma.viewport.scrollAndZoomIntoView([node as SceneNode]);
+    } else if (msg.type === 'delete-variables') {
+      const removed: string[] = [];
+      for (const id of msg.ids) {
+        const v = await figma.variables.getVariableByIdAsync(id);
+        if (v) { try { v.remove(); removed.push(id); } catch { /* in use / locked */ } }
+      }
+      figma.ui.postMessage({
+        type: 'action-result', ok: true,
+        message: `Deleted ${removed.length} variable${removed.length === 1 ? '' : 's'}.`,
+        removedVariableIds: removed,
+      });
     }
     // navigate / delete / candidates / replace added in later tasks
   } catch (e) {
