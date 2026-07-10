@@ -208,6 +208,15 @@ figma.ui.onmessage = async (msg: UIToPlugin) => {
     } else if (msg.type === 'set-scope') {
       if (!lastScan) lastScan = await fullScan();
       figma.ui.postMessage({ type: 'scan-result', result: filterByScope(msg.scope) });
+    } else if (msg.type === 'navigate') {
+      const node = await figma.getNodeByIdAsync(msg.nodeId);
+      if (!node) { figma.ui.postMessage({ type: 'error', message: 'That layer no longer exists — rescan.' }); return; }
+      const page = await figma.getNodeByIdAsync(msg.pageId);
+      if (page && page.type === 'PAGE' && figma.currentPage.id !== page.id) {
+        await figma.setCurrentPageAsync(page);
+      }
+      figma.currentPage.selection = [node as SceneNode];
+      figma.viewport.scrollAndZoomIntoView([node as SceneNode]);
     }
     // navigate / delete / candidates / replace added in later tasks
   } catch (e) {

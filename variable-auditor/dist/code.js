@@ -340,6 +340,18 @@
             if (!lastScan)
               lastScan = yield fullScan();
             figma.ui.postMessage({ type: "scan-result", result: filterByScope(msg.scope) });
+          } else if (msg.type === "navigate") {
+            const node = yield figma.getNodeByIdAsync(msg.nodeId);
+            if (!node) {
+              figma.ui.postMessage({ type: "error", message: "That layer no longer exists \u2014 rescan." });
+              return;
+            }
+            const page = yield figma.getNodeByIdAsync(msg.pageId);
+            if (page && page.type === "PAGE" && figma.currentPage.id !== page.id) {
+              yield figma.setCurrentPageAsync(page);
+            }
+            figma.currentPage.selection = [node];
+            figma.viewport.scrollAndZoomIntoView([node]);
           }
         } catch (e) {
           figma.ui.postMessage({ type: "error", message: String((_a = e == null ? void 0 : e.message) != null ? _a : e) });
