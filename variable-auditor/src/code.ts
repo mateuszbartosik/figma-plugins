@@ -5,18 +5,21 @@ import {
 } from './analysis.ts';
 import type {
   Scope, Occurrence, BrokenReference, UnusedVariable, HardcodedGroup,
-  ScanResult, UIToPlugin, Checks,
+  ScanResult, UIToPlugin, Checks, HardcodedProps,
 } from './types.ts';
 
 figma.showUI(__html__, { width: 404, height: 660 });
 
 let checks: Checks = { unused: true, broken: true, hardcoded: true };
+let props: HardcodedProps = { color: true, radius: true, strokeWeight: true, spacing: true, typography: true };
 let lastScope: Scope = 'page';
 const CHECKS_KEY = 'variable-auditor:checks';
+const PROPS_KEY = 'variable-auditor:props';
 
 (async () => {
   try { const saved = await figma.clientStorage.getAsync(CHECKS_KEY); if (saved) checks = { ...checks, ...saved }; } catch (e) {}
-  figma.ui.postMessage({ type: 'settings', checks });
+  try { const savedProps = await figma.clientStorage.getAsync(PROPS_KEY); if (savedProps) props = { ...props, ...savedProps }; } catch (e) {}
+  figma.ui.postMessage({ type: 'settings', checks, props });
 })();
 
 interface FullScan {
@@ -63,7 +66,7 @@ function pushNumberOccurrence(
 function collectNode(
   node: SceneNode, page: PageNode,
   usedIds: Set<string>, refs: { id: string; ref: BrokenReference }[], occ: Occurrence[],
-  collectHardcoded: boolean,
+  collectHardcoded: boolean, props: HardcodedProps,
 ) {
   const bv = (node as any).boundVariables as Record<string, any> | undefined;
   if (bv) {
@@ -86,11 +89,13 @@ function collectNode(
 
   if (collectHardcoded) {
     // Colors
-    if ('fills' in node && (node as any).fills !== figma.mixed) pushColorOccurrences(node, page, 'fills', occ);
-    if ('strokes' in node && Array.isArray((node as any).strokes)) pushColorOccurrences(node, page, 'strokes', occ);
+    if (props.color) {
+      if ('fills' in node && (node as any).fills !== figma.mixed) pushColorOccurrences(node, page, 'fills', occ);
+      if ('strokes' in node && Array.isArray((node as any).strokes)) pushColorOccurrences(node, page, 'strokes', occ);
+    }
 
     // Corner radius (uniform primary; per-corner when mixed)
-    if ('cornerRadius' in node) {
+    if (props.radius && 'cornerRadius' in node) {
       const cr = (node as any).cornerRadius;
       if (cr !== figma.mixed && typeof cr === 'number') {
         if (cr > 0 && !bv?.cornerRadius && !bv?.topLeftRadius) pushNumberOccurrence(node, page, 'radius', 'cornerRadius', cr, occ);
@@ -103,7 +108,7 @@ function collectNode(
     }
 
     // Stroke weight (only if strokes present, uniform)
-    if ('strokeWeight' in node && Array.isArray((node as any).strokes) && (node as any).strokes.length > 0) {
+    if (props.strokeWeight && 'strokeWeight' in node && Array.isArray((node as any).strokes) && (node as any).strokes.length > 0) {
       const sw = (node as any).strokeWeight;
       if (sw !== figma.mixed && typeof sw === 'number' && sw > 0 && !bv?.strokeWeight) {
         pushNumberOccurrence(node, page, 'strokeWeight', 'strokeWeight', sw, occ);
@@ -111,7 +116,7 @@ function collectNode(
     }
 
     // Auto-layout spacing
-    if ('layoutMode' in node && (node as any).layoutMode !== 'NONE') {
+    if (props.spacing && 'layoutMode' in node && (node as any).layoutMode !== 'NONE') {
       const paddingFields = ['paddingLeft','paddingRight','paddingTop','paddingBottom'] as const;
       for (const f of paddingFields) {
         const val = (node as any)[f];
@@ -135,7 +140,7 @@ function collectNode(
     }
 
     // Typography (skip mixed)
-    if (node.type === 'TEXT') {
+    if (props.typography && node.type === 'TEXT') {
       const t = node as TextNode;
       if (t.fontSize !== figma.mixed && typeof t.fontSize === 'number' && !bv?.fontSize)
         pushNumberOccurrence(node, page, 'fontSize', 'fontSize', t.fontSize, occ);
@@ -183,7 +188,7 @@ async function fullScan(): Promise<FullScan> {
   for (const page of figma.root.children) {
     const nodes = (page as PageNode).findAll(() => true);
     for (const node of nodes) {
-      collectNode(node as SceneNode, page as PageNode, usedIds, refs, occurrencesAll, checks.hardcoded);
+      collectNode(node as SceneNode, page as PageNode, usedIds, refs, occurrencesAll, checks.hardcoded, props);
       if ((++scanned % 800) === 0) figma.ui.postMessage({ type: 'scan-progress', scanned });
     }
   }
@@ -267,7 +272,9 @@ figma.ui.onmessage = async (msg: UIToPlugin) => {
       figma.ui.postMessage({ type: 'scan-result', result: filterByScope(msg.scope) });
     } else if (msg.type === 'set-checks') {
       checks = msg.checks;
+      props = msg.props;
       figma.clientStorage.setAsync(CHECKS_KEY, checks).catch(() => {});
+      figma.clientStorage.setAsync(PROPS_KEY, props).catch(() => {});
       // Only rescan if a scan already ran — before that, the empty state stays
       // until the user clicks Scan, so there is nothing yet to recompute.
       if (lastScan) {

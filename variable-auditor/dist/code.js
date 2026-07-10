@@ -180,8 +180,10 @@
       init_analysis();
       figma.showUI(__html__, { width: 404, height: 660 });
       var checks = { unused: true, broken: true, hardcoded: true };
+      var props = { color: true, radius: true, strokeWeight: true, spacing: true, typography: true };
       var lastScope = "page";
       var CHECKS_KEY = "variable-auditor:checks";
+      var PROPS_KEY = "variable-auditor:props";
       (() => __async(exports, null, function* () {
         try {
           const saved = yield figma.clientStorage.getAsync(CHECKS_KEY);
@@ -189,7 +191,13 @@
             checks = __spreadValues(__spreadValues({}, checks), saved);
         } catch (e) {
         }
-        figma.ui.postMessage({ type: "settings", checks });
+        try {
+          const savedProps = yield figma.clientStorage.getAsync(PROPS_KEY);
+          if (savedProps)
+            props = __spreadValues(__spreadValues({}, props), savedProps);
+        } catch (e) {
+        }
+        figma.ui.postMessage({ type: "settings", checks, props });
       }))();
       var lastScan = null;
       function isAliasValue(v) {
@@ -237,7 +245,7 @@
           num
         });
       }
-      function collectNode(node, page, usedIds, refs, occ, collectHardcoded) {
+      function collectNode(node, page, usedIds, refs, occ, collectHardcoded, props2) {
         const bv = node.boundVariables;
         if (bv) {
           for (const field of Object.keys(bv)) {
@@ -259,11 +267,13 @@
           }
         }
         if (collectHardcoded) {
-          if ("fills" in node && node.fills !== figma.mixed)
-            pushColorOccurrences(node, page, "fills", occ);
-          if ("strokes" in node && Array.isArray(node.strokes))
-            pushColorOccurrences(node, page, "strokes", occ);
-          if ("cornerRadius" in node) {
+          if (props2.color) {
+            if ("fills" in node && node.fills !== figma.mixed)
+              pushColorOccurrences(node, page, "fills", occ);
+            if ("strokes" in node && Array.isArray(node.strokes))
+              pushColorOccurrences(node, page, "strokes", occ);
+          }
+          if (props2.radius && "cornerRadius" in node) {
             const cr = node.cornerRadius;
             if (cr !== figma.mixed && typeof cr === "number") {
               if (cr > 0 && !(bv == null ? void 0 : bv.cornerRadius) && !(bv == null ? void 0 : bv.topLeftRadius))
@@ -276,13 +286,13 @@
               }
             }
           }
-          if ("strokeWeight" in node && Array.isArray(node.strokes) && node.strokes.length > 0) {
+          if (props2.strokeWeight && "strokeWeight" in node && Array.isArray(node.strokes) && node.strokes.length > 0) {
             const sw = node.strokeWeight;
             if (sw !== figma.mixed && typeof sw === "number" && sw > 0 && !(bv == null ? void 0 : bv.strokeWeight)) {
               pushNumberOccurrence(node, page, "strokeWeight", "strokeWeight", sw, occ);
             }
           }
-          if ("layoutMode" in node && node.layoutMode !== "NONE") {
+          if (props2.spacing && "layoutMode" in node && node.layoutMode !== "NONE") {
             const paddingFields = ["paddingLeft", "paddingRight", "paddingTop", "paddingBottom"];
             for (const f of paddingFields) {
               const val = node[f];
@@ -302,7 +312,7 @@
               }
             }
           }
-          if (node.type === "TEXT") {
+          if (props2.typography && node.type === "TEXT") {
             const t = node;
             if (t.fontSize !== figma.mixed && typeof t.fontSize === "number" && !(bv == null ? void 0 : bv.fontSize))
               pushNumberOccurrence(node, page, "fontSize", "fontSize", t.fontSize, occ);
@@ -350,7 +360,7 @@
           for (const page of figma.root.children) {
             const nodes = page.findAll(() => true);
             for (const node of nodes) {
-              collectNode(node, page, usedIds, refs, occurrencesAll, checks.hardcoded);
+              collectNode(node, page, usedIds, refs, occurrencesAll, checks.hardcoded, props);
               if (++scanned % 800 === 0)
                 figma.ui.postMessage({ type: "scan-progress", scanned });
             }
@@ -443,7 +453,10 @@
             figma.ui.postMessage({ type: "scan-result", result: filterByScope(msg.scope) });
           } else if (msg.type === "set-checks") {
             checks = msg.checks;
+            props = msg.props;
             figma.clientStorage.setAsync(CHECKS_KEY, checks).catch(() => {
+            });
+            figma.clientStorage.setAsync(PROPS_KEY, props).catch(() => {
             });
             if (lastScan) {
               lastScan = yield fullScan();

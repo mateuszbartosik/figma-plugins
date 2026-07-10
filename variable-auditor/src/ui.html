@@ -123,15 +123,6 @@
     box-shadow:0 6px 15px -6px rgba(108,92,255,.6);}
   .replace:hover svg{color:#fff;}
 
-  .filters{display:flex; flex-wrap:wrap; gap:6px; padding:4px 8px 10px;}
-  .fchip{display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:500; padding:5px 11px;
-    border-radius:20px; cursor:pointer; border:1px solid var(--border); background:var(--surface);
-    color:var(--text-2); font-family:inherit; transition:.15s;}
-  .fchip:hover{color:var(--text); border-color:var(--border-2);}
-  .fchip .fdot{width:7px; height:7px; border-radius:50%; background:currentColor; opacity:.35;}
-  .fchip.on{color:var(--violet-ink); background:rgba(124,92,255,.1); border-color:rgba(124,92,255,.28);}
-  .fchip.on .fdot{background:var(--violet); opacity:1;}
-
   .grow{cursor:pointer;}
   .occ-wrap{display:grid; grid-template-rows:0fr; transition:grid-template-rows .28s cubic-bezier(.3,.7,.2,1);}
   .grp.open .occ-wrap{grid-template-rows:1fr;}
@@ -173,6 +164,9 @@
   .dialog-msg{font-size:12px;color:var(--text-2);line-height:1.5;margin-bottom:16px;}
   .dialog-actions{display:flex;gap:8px;justify-content:flex-end;}
   .setrow{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:9px 2px;font-size:13px;}
+  .setsub{padding-left:14px;border-left:2px solid var(--border);margin:2px 0 6px 4px;}
+  .setrow.sub span{font-size:12px;color:var(--text-2);}
+  .setsub.disabled{opacity:.4;pointer-events:none;}
   .btn-ghost,.btn-danger{font-family:inherit;font-size:12px;font-weight:500;padding:8px 14px;border-radius:10px;cursor:pointer;border:1px solid var(--border-2);background:var(--surface);color:var(--text);}
   .btn-ghost:hover{background:var(--surface-2);}
   .btn-danger{border-color:transparent;background:var(--rose);color:#fff;}
@@ -277,6 +271,13 @@
           <label class="setrow"><span>Unused variables</span><input type="checkbox" class="chk-check" data-check="unused" checked></label>
           <label class="setrow"><span>Broken references</span><input type="checkbox" class="chk-check" data-check="broken" checked></label>
           <label class="setrow"><span>Hardcoded values</span><input type="checkbox" class="chk-check" data-check="hardcoded" checked></label>
+          <div class="setsub" id="setsub-hardcoded">
+            <label class="setrow sub"><span>Colors</span><input type="checkbox" class="chk-prop" data-prop="color" checked></label>
+            <label class="setrow sub"><span>Corner radius</span><input type="checkbox" class="chk-prop" data-prop="radius" checked></label>
+            <label class="setrow sub"><span>Stroke weight</span><input type="checkbox" class="chk-prop" data-prop="strokeWeight" checked></label>
+            <label class="setrow sub"><span>Spacing</span><input type="checkbox" class="chk-prop" data-prop="spacing" checked></label>
+            <label class="setrow sub"><span>Typography</span><input type="checkbox" class="chk-prop" data-prop="typography" checked></label>
+          </div>
           <div class="dialog-actions">
             <button class="btn-ghost" id="settings-done">Done</button>
           </div>
@@ -286,7 +287,7 @@
   </div>
 
 <script>
-  var state = { scope: 'page', scanned: false, result: null, pendingReplace: null, checks: { unused: true, broken: true, hardcoded: true } };
+  var state = { scope: 'page', scanned: false, result: null, pendingReplace: null, checks: { unused: true, broken: true, hardcoded: true }, props: { color: true, radius: true, strokeWeight: true, spacing: true, typography: true } };
   var selectedUnused = new Set();
   function post(msg) { parent.postMessage({ pluginMessage: msg }, '*'); }
   function icon(id, cls) {
@@ -342,8 +343,18 @@
   document.querySelectorAll('.chk-check').forEach(function (cb) {
     cb.addEventListener('change', function () {
       state.checks[cb.dataset.check] = cb.checked;
+      if (cb.dataset.check === 'hardcoded') {
+        document.getElementById('setsub-hardcoded').classList.toggle('disabled', !state.checks.hardcoded);
+      }
       if (state.scanned) setBusy(true); // pre-scan: just persist; a scan isn't triggered, so don't disable the Scan button
-      post({ type: 'set-checks', checks: state.checks });
+      post({ type: 'set-checks', checks: state.checks, props: state.props });
+    });
+  });
+  document.querySelectorAll('.chk-prop').forEach(function (cb) {
+    cb.addEventListener('change', function () {
+      state.props[cb.dataset.prop] = cb.checked;
+      if (state.scanned) setBusy(true);
+      post({ type: 'set-checks', checks: state.checks, props: state.props });
     });
   });
 
@@ -362,7 +373,10 @@
     else if (m.type === 'error') { setBusy(false); toast(m.message); }
     else if (m.type === 'settings') {
       state.checks = m.checks;
+      state.props = m.props || state.props;
       document.querySelectorAll('.chk-check').forEach(function (cb) { cb.checked = !!state.checks[cb.dataset.check]; });
+      document.querySelectorAll('.chk-prop').forEach(function (cb) { cb.checked = !!state.props[cb.dataset.prop]; });
+      document.getElementById('setsub-hardcoded').classList.toggle('disabled', !state.checks.hardcoded);
       if (state.result) render(state.result);
     }
   };
@@ -482,14 +496,6 @@
     sb.appendChild(inner); body.appendChild(sb); card.appendChild(body);
   }
 
-  var FILTERS = [
-    { cat: 'color', label: 'Color' },
-    { cat: 'radiusStroke', label: 'Radius & stroke' },
-    { cat: 'spacing', label: 'Spacing' },
-    { cat: 'typography', label: 'Typography' },
-  ];
-  var activeFilters = { color: true, radiusStroke: true, spacing: true, typography: true };
-
   function renderHardcoded(groups) {
     var card = document.getElementById('card-hardcoded');
     if (!state.checks.hardcoded) { card.hidden = true; return; }
@@ -497,15 +503,8 @@
     var hardcodedTotal = groups.reduce(function (s, g) { return s + g.count; }, 0);
     card.appendChild(sectionHeader('code', 'Hardcoded values', hardcodedTotal, TINT.amber));
     var body = el('div', 'swrap'); var sb = el('div', 'sbody'); var inner = el('div', 'sbody-inner');
-    var chips = el('div', 'filters');
-    FILTERS.forEach(function (f) {
-      var c = el('button', 'fchip' + (activeFilters[f.cat] ? ' on' : ''), '<span class="fdot"></span>' + f.label);
-      c.addEventListener('click', function () { activeFilters[f.cat] = !activeFilters[f.cat]; c.classList.toggle('on'); applyFilters(); });
-      chips.appendChild(c);
-    });
-    inner.appendChild(chips);
     groups.forEach(function (g) {
-      var grp = el('div', 'grp'); grp.dataset.cat = g.category;
+      var grp = el('div', 'grp');
       var left = g.colorHex ? '<div class="swatch" style="background:' + g.colorHex + '"></div>'
                             : '<div class="tglyph">' + esc(formatGlyph(g)) + '</div>';
       var rowMeta = g.category === 'color' ? 'Fill color · ' + g.count + ' layers' : g.count + ' layers';
@@ -530,12 +529,6 @@
     });
     if (!groups.length) inner.appendChild(el('div', 'empty', 'No hardcoded values in scope.'));
     sb.appendChild(inner); body.appendChild(sb); card.appendChild(body);
-    applyFilters();
-  }
-  function applyFilters() {
-    document.querySelectorAll('#card-hardcoded .grp').forEach(function (g) {
-      g.style.display = activeFilters[g.dataset.cat] ? '' : 'none';
-    });
   }
 
   function esc(s) { return String(s).replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }); }

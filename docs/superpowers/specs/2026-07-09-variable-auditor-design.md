@@ -150,6 +150,8 @@ Categories and fields:
 
 Skipping zeros for radius/spacing — and `letterSpacing` 0 (the ubiquitous intentional default) — avoids near-universal noise (binding a `0` is rare).
 
+Which hardcoded properties are collected is gated by persisted per-property settings (color / radius / strokeWeight / spacing / typography).
+
 ### 5.5 Scope filtering
 The full cached result is filtered for display:
 - **Document:** all occurrences.
@@ -259,6 +261,11 @@ single-theme (no dark mode in v1).
 
 The plugin opens to an empty state with a Scan button; the first scan runs on demand
 (no auto-scan). Scope can be pre-selected before scanning.
+
+Settings also carries per-property toggles for hardcoded values (Colors, Corner
+radius, Stroke weight, Spacing, Typography), persisted; disabled properties are
+skipped during the scan. (The former in-results category filter chips were removed
+in favor of these.)
 
 **Layout & scrolling:** the panel is a **fixed-height flex column** — header, scope,
 metrics, and footer stay pinned while **only the results region scrolls**. Result
