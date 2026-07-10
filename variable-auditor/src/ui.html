@@ -157,6 +157,23 @@
   .pick-row:hover{background:var(--hover);}
   .toast{position:absolute;left:50%;bottom:56px;transform:translateX(-50%) translateY(10px);background:var(--text);color:#fff;font-size:11.5px;padding:8px 14px;border-radius:10px;opacity:0;transition:.2s;pointer-events:none;z-index:11;}
   .toast.show{opacity:1;transform:translateX(-50%);}
+  #confirm{align-items:center;justify-content:center;}
+  .dialog{background:var(--surface);width:calc(100% - 48px);max-width:320px;border-radius:16px;padding:18px;box-shadow:0 20px 50px -16px rgba(30,24,70,.45);}
+  .dialog-title{font-size:14px;font-weight:600;margin-bottom:6px;}
+  .dialog-msg{font-size:12px;color:var(--text-2);line-height:1.5;margin-bottom:16px;}
+  .dialog-actions{display:flex;gap:8px;justify-content:flex-end;}
+  .btn-ghost,.btn-danger{font-family:inherit;font-size:12px;font-weight:500;padding:8px 14px;border-radius:10px;cursor:pointer;border:1px solid var(--border-2);background:var(--surface);color:var(--text);}
+  .btn-ghost:hover{background:var(--surface-2);}
+  .btn-danger{border-color:transparent;background:var(--rose);color:#fff;}
+  .btn-danger:hover{background:var(--rose-ink);}
+  input[type="checkbox"]{appearance:none;-webkit-appearance:none;width:15px;height:15px;margin:0;border:1.5px solid var(--border-2);border-radius:5px;background:var(--surface);position:relative;cursor:pointer;flex-shrink:0;transition:.12s;}
+  input[type="checkbox"]:checked{background:var(--violet);border-color:var(--violet);}
+  input[type="checkbox"]:checked::after{content:"";position:absolute;left:4px;top:1px;width:4px;height:8px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg);}
+  .bulkbar{display:flex;align-items:center;justify-content:space-between;padding:2px 8px 8px;}
+  .selall{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--text-2);cursor:pointer;user-select:none;}
+  .btn-del-sel{font-family:inherit;font-size:11px;font-weight:500;padding:5px 10px;border-radius:9px;border:1px solid var(--border);background:var(--surface);color:var(--text-3);cursor:not-allowed;}
+  .btn-del-sel:not(:disabled){color:var(--rose-ink);border-color:rgba(240,57,107,.3);cursor:pointer;}
+  .btn-del-sel:not(:disabled):hover{background:rgba(240,57,107,.1);}
 </style>
 
 <div id="icons" hidden>
@@ -221,11 +238,22 @@
           <div class="sheet-body" id="picker-body"></div>
         </div>
       </div>
+      <div class="overlay" id="confirm">
+        <div class="dialog">
+          <div class="dialog-title" id="confirm-title">Delete variable?</div>
+          <div class="dialog-msg" id="confirm-msg"></div>
+          <div class="dialog-actions">
+            <button class="btn-ghost" id="confirm-cancel">Cancel</button>
+            <button class="btn-danger" id="confirm-ok">Delete</button>
+          </div>
+        </div>
+      </div>
       <div id="toast" class="toast"></div>
   </div>
 
 <script>
   var state = { scope: 'page', result: null, pendingReplace: null };
+  var selectedUnused = new Set();
   function post(msg) { parent.postMessage({ pluginMessage: msg }, '*'); }
   function icon(id, cls) {
     var e = document.getElementById('ic-' + id); if (!e) return '';
@@ -290,24 +318,60 @@
   };
 
   function renderUnused(list) {
+    selectedUnused.clear();
     var card = document.getElementById('card-unused'); card.hidden = false; card.innerHTML = '';
     card.appendChild(sectionHeader('ghost', 'Unused variables', list.length, TINT.violet));
     var body = el('div', 'swrap'); var sb = el('div', 'sbody'); var inner = el('div', 'sbody-inner');
     inner.appendChild(el('div', 'caveat', icon('info') +
       '<p>Unused in this file only. If it’s published as a library, these may still be used elsewhere.</p>'));
-    if (!list.length) inner.appendChild(el('div', 'empty', 'No unused variables — nice.'));
-    list.forEach(function (v) {
-      var row = el('div', 'row');
-      var left = v.colorHex
-        ? '<div class="swatch" style="background:' + v.colorHex + '"></div>'
-        : '<div class="tglyph">' + (v.valuePreview.length <= 3 ? esc(v.valuePreview) : '#') + '</div>';
-      row.innerHTML = left +
-        '<div class="rmain"><div class="rname">' + esc(v.name) + '</div><div class="rmeta">' + esc(v.collectionName) + ' · ' + cap(v.resolvedType) + '</div></div>' +
-        '<div class="rval">' + esc(v.valuePreview) + '</div>' +
-        '<div class="ract"><button class="mini danger" aria-label="Delete">' + icon('trash') + '</button></div>';
-      row.querySelector('.mini').addEventListener('click', function () { post({ type: 'delete-variables', ids: [v.id] }); });
-      inner.appendChild(row);
-    });
+    if (!list.length) {
+      inner.appendChild(el('div', 'empty', 'No unused variables — nice.'));
+    } else {
+      var bulkbar = el('div', 'bulkbar',
+        '<label class="selall"><input type="checkbox" id="sel-all">Select all</label>' +
+        '<button class="btn-del-sel" id="del-sel" disabled>Delete selected</button>');
+      inner.appendChild(bulkbar);
+      var selAllChk = bulkbar.querySelector('#sel-all');
+      var delSelBtn = bulkbar.querySelector('#del-sel');
+      function updateBulk() {
+        var n = selectedUnused.size;
+        delSelBtn.disabled = n === 0;
+        delSelBtn.textContent = n > 0 ? 'Delete selected (' + n + ')' : 'Delete selected';
+      }
+      selAllChk.addEventListener('change', function () {
+        var checked = selAllChk.checked;
+        inner.querySelectorAll('.row-chk').forEach(function (chk) {
+          chk.checked = checked;
+          if (checked) selectedUnused.add(chk.dataset.id); else selectedUnused.delete(chk.dataset.id);
+        });
+        updateBulk();
+      });
+      delSelBtn.addEventListener('click', function () {
+        askConfirm('Delete ' + selectedUnused.size + ' variables?', 'This removes them from the file. You can undo in Figma.', function () {
+          post({ type: 'delete-variables', ids: Array.from(selectedUnused) });
+        });
+      });
+      list.forEach(function (v) {
+        var row = el('div', 'row');
+        var left = v.colorHex
+          ? '<div class="swatch" style="background:' + v.colorHex + '"></div>'
+          : '<div class="tglyph">' + (v.valuePreview.length <= 3 ? esc(v.valuePreview) : '#') + '</div>';
+        row.innerHTML = '<input type="checkbox" class="row-chk" data-id="' + esc(v.id) + '">' + left +
+          '<div class="rmain"><div class="rname">' + esc(v.name) + '</div><div class="rmeta">' + esc(v.collectionName) + ' · ' + cap(v.resolvedType) + '</div></div>' +
+          '<div class="rval">' + esc(v.valuePreview) + '</div>' +
+          '<div class="ract"><button class="mini danger" aria-label="Delete">' + icon('trash') + '</button></div>';
+        row.querySelector('.row-chk').addEventListener('change', function (e) {
+          if (e.target.checked) selectedUnused.add(v.id); else selectedUnused.delete(v.id);
+          updateBulk();
+        });
+        row.querySelector('.mini').addEventListener('click', function () {
+          askConfirm('Delete "' + v.name + '"?', 'This removes it from the file. You can undo in Figma.', function () {
+            post({ type: 'delete-variables', ids: [v.id] });
+          });
+        });
+        inner.appendChild(row);
+      });
+    }
     sb.appendChild(inner); body.appendChild(sb); card.appendChild(body);
   }
 
@@ -387,6 +451,18 @@
   function fieldLabel(f) { return ({ fills: 'Fill', strokes: 'Stroke', cornerRadius: 'Corner radius', strokeWeight: 'Stroke weight', fontSize: 'Font size', lineHeight: 'Line height', letterSpacing: 'Letter spacing', itemSpacing: 'Item spacing' })[f] || f; }
   function formatGlyph(g) { var n = g.num != null ? String(g.num) : '#'; return n.length <= 3 ? n : '#'; }
   function toast(msg) { var t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(function () { t.classList.remove('show'); }, 2600); }
+
+  function askConfirm(title, msg, onOk) {
+    document.getElementById('confirm-title').textContent = title;
+    document.getElementById('confirm-msg').textContent = msg;
+    var ov = document.getElementById('confirm');
+    var okBtn = document.getElementById('confirm-ok');
+    var cancelBtn = document.getElementById('confirm-cancel');
+    function close() { ov.classList.remove('show'); okBtn.onclick = null; cancelBtn.onclick = null; }
+    okBtn.onclick = function () { close(); onOk(); };
+    cancelBtn.onclick = close;
+    ov.classList.add('show');
+  }
 
   function showPicker(m) {
     var pr = state.pendingReplace; if (!pr) return;
