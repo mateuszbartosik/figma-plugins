@@ -210,9 +210,7 @@ async function applyBinding(node: SceneNode, o: Occurrence, variable: Variable):
     paints[o.paintIndex!] = figma.variables.setBoundVariableForPaint(p as SolidPaint, 'color', variable);
     (node as any)[key] = paints;
   } else if (o.field === 'cornerRadius') {
-    for (const f of ['topLeftRadius','topRightRadius','bottomLeftRadius','bottomRightRadius'] as const) {
-      (node as any).setBoundVariable(f, variable);
-    }
+    (node as any).setBoundVariable('cornerRadius', variable);
   } else {
     if (node.type === 'TEXT' && node.fontName !== figma.mixed) await figma.loadFontAsync(node.fontName);
     (node as any).setBoundVariable(o.field, variable);

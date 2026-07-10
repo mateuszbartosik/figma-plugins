@@ -386,9 +386,7 @@
             paints[o.paintIndex] = figma.variables.setBoundVariableForPaint(p, "color", variable);
             node[key] = paints;
           } else if (o.field === "cornerRadius") {
-            for (const f of ["topLeftRadius", "topRightRadius", "bottomLeftRadius", "bottomRightRadius"]) {
-              node.setBoundVariable(f, variable);
-            }
+            node.setBoundVariable("cornerRadius", variable);
           } else {
             if (node.type === "TEXT" && node.fontName !== figma.mixed)
               yield figma.loadFontAsync(node.fontName);
