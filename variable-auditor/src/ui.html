@@ -155,14 +155,20 @@
   .empty{padding:16px 8px;color:var(--text-3);font-size:12px;text-align:center;}
   .busy{opacity:.6;pointer-events:none;}
   .tag.exact{color:var(--violet-ink);background:rgba(124,92,255,.12);}
+  .tag.near{color:var(--amber-ink);background:rgba(224,134,0,.12);}
   .overlay{position:absolute;inset:0;background:rgba(20,18,40,.28);display:none;align-items:flex-end;z-index:10;}
   .overlay.show{display:flex;}
   .sheet{background:var(--surface);width:100%;max-height:80%;border-radius:18px 18px 0 0;display:flex;flex-direction:column;box-shadow:0 -12px 40px -12px rgba(30,24,70,.4);}
   .sheet-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600;}
   .sheet-body{overflow-y:auto;padding:8px;}
   .pick-label{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);padding:8px 8px 4px;}
+  .pick-sublabel{font-size:10.5px;font-weight:500;color:var(--text-3);padding:6px 8px 2px;}
   .pick-row{display:flex;align-items:center;gap:11px;width:100%;padding:9px 8px;border:0;background:transparent;border-radius:11px;cursor:pointer;font-family:inherit;text-align:left;color:var(--text);}
   .pick-row:hover{background:var(--hover);}
+  .pick-search{display:flex;align-items:center;gap:8px;flex-shrink:0;margin:10px 12px 2px;padding:8px 11px;border:1px solid var(--border);border-radius:11px;background:var(--surface-2);}
+  .pick-search svg{color:var(--text-3);flex-shrink:0;}
+  .pick-search input{flex:1;min-width:0;border:0;background:transparent;outline:0;font-family:inherit;font-size:12.5px;color:var(--text);}
+  .pick-search input::placeholder{color:var(--text-3);}
   .toast{position:absolute;left:50%;bottom:56px;transform:translateX(-50%) translateY(10px);background:var(--text);color:#fff;font-size:11.5px;padding:8px 14px;border-radius:10px;opacity:0;transition:.2s;pointer-events:none;z-index:11;}
   .toast.show{opacity:1;transform:translateX(-50%);}
   #confirm{align-items:center;justify-content:center;}
@@ -204,6 +210,7 @@
   <span id="ic-check"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-4-4"/></svg></span>
   <span id="ic-settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/></svg></span>
   <span id="ic-scan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="24" height="24"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3"/><path d="m16 16-1.9-1.9"/></svg></span>
+  <span id="ic-search"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span>
 </div>
 
 <div class="panel">
@@ -263,6 +270,10 @@
         <div class="sheet">
           <div class="sheet-head"><span id="picker-title">Replace</span>
             <button class="mini" id="picker-cancel" aria-label="Cancel"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+          <div class="pick-search">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <input type="text" id="picker-search" placeholder="Search by name…" autocomplete="off" aria-label="Search variables by name">
+          </div>
           <div class="sheet-body" id="picker-body"></div>
         </div>
       </div>
@@ -301,6 +312,7 @@
 <script>
   var state = { scope: 'page', scanned: false, result: null, pendingReplace: null, checks: { unused: true, broken: true, hardcoded: true, unlinked: true }, props: { color: true, radius: true, strokeWeight: true, spacing: true, typography: true } };
   var selectedUnused = new Set();
+  var pickerData = null; // { local, library } payload for the currently open picker (re-rendered live on search)
   function post(msg) { parent.postMessage({ pluginMessage: msg }, '*'); }
   function icon(id, cls) {
     var e = document.getElementById('ic-' + id); if (!e) return '';
@@ -641,32 +653,101 @@
     ov.classList.add('show');
   }
 
+  // Opens the picker for the pending replace target and does the first render.
+  // The candidates payload is cached in `pickerData` so the search box can
+  // re-render locally on every keystroke without another round trip to the plugin.
   function showPicker(m) {
     var pr = state.pendingReplace; if (!pr) return;
-    var overlay = document.getElementById('picker');
-    var body = document.getElementById('picker-body');
+    pickerData = m;
     document.getElementById('picker-title').textContent = 'Replace ' + pr.label;
+    var search = document.getElementById('picker-search');
+    search.value = '';
+    renderPickerRows('');
+    document.getElementById('picker').classList.add('show');
+  }
+
+  function closePicker() {
+    document.getElementById('picker').classList.remove('show');
+    state.pendingReplace = null;
+    pickerData = null;
+  }
+
+  // Rebuilds #picker-body for the current pickerData, filtered by a case-insensitive
+  // name substring. Sections (and library collection subheadings) are only appended
+  // when they have at least one matching row, so empty ones simply never appear.
+  function renderPickerRows(filterText) {
+    var pr = state.pendingReplace;
+    var body = document.getElementById('picker-body');
     body.innerHTML = '';
-    var exact = m.candidates.filter(function (c) { return c.exact; });
-    var rest = m.candidates.filter(function (c) { return !c.exact; });
-    function addRow(c) {
+    if (!pr || !pickerData) return;
+
+    var q = filterText.trim().toLowerCase();
+    function matches(nm) { return !q || nm.toLowerCase().indexOf(q) !== -1; }
+
+    function addRow(glyphHtml, nm, metaHtml, onPick) {
       var row = el('button', 'pick-row');
-      var left = c.colorHex ? '<div class="swatch" style="background:' + c.colorHex + '"></div>' : '<div class="tglyph">' + esc(c.valuePreview) + '</div>';
-      row.innerHTML = left + '<div class="rmain"><div class="rname">' + esc(c.name) + '</div><div class="rmeta">' + esc(c.collectionName) + (c.exact ? ' · <span class="tag exact">exact</span>' : '') + '</div></div>';
-      row.addEventListener('click', function () {
-        post({ type: 'replace', category: pr.category, valueKey: pr.valueKey, variableId: c.id });
-        overlay.classList.remove('show'); state.pendingReplace = null;
-      });
+      row.innerHTML = glyphHtml + '<div class="rmain"><div class="rname">' + esc(nm) + '</div><div class="rmeta">' + metaHtml + '</div></div>';
+      row.addEventListener('click', function () { onPick(); closePicker(); });
       body.appendChild(row);
     }
-    if (exact.length) { body.appendChild(el('div', 'pick-label', 'Exact matches')); exact.forEach(addRow); }
-    body.appendChild(el('div', 'pick-label', rest.length ? 'All ' + m.category + ' variables' : 'No local variables of this type'));
-    rest.forEach(addRow);
-    overlay.classList.add('show');
+    function addLocalRow(c, tagCls, tagLabel) {
+      var glyph = c.colorHex ? '<div class="swatch" style="background:' + c.colorHex + '"></div>' : '<div class="tglyph">' + esc(c.valuePreview) + '</div>';
+      var meta = esc(c.collectionName) + (tagCls ? ' · <span class="tag ' + tagCls + '">' + tagLabel + '</span>' : '');
+      addRow(glyph, c.name, meta, function () {
+        post({ type: 'replace', category: pr.category, valueKey: pr.valueKey, variableId: c.id });
+      });
+    }
+    // Library variables carry no value preview (Figma only exposes name/key/type
+    // for a not-yet-imported library variable) — reuse the same "#" glyph the rest
+    // of the app already falls back to when a real value can't be shown.
+    function addLibraryRow(c) {
+      addRow('<div class="tglyph">#</div>', c.name, esc(c.collectionName), function () {
+        post({ type: 'replace', category: pr.category, valueKey: pr.valueKey, libraryKey: c.key });
+      });
+    }
+
+    var local = pickerData.local || [];
+    var library = pickerData.library || [];
+    var exact = local.filter(function (c) { return c.exact && matches(c.name); });
+    var near = local.filter(function (c) { return c.near && !c.exact && matches(c.name); });
+    var rest = local.filter(function (c) { return !c.exact && !c.near && matches(c.name); });
+
+    if (exact.length) {
+      body.appendChild(el('div', 'pick-label', 'Exact matches'));
+      exact.forEach(function (c) { addLocalRow(c, 'exact', 'exact'); });
+    }
+    if (near.length) {
+      body.appendChild(el('div', 'pick-label', 'Closest matches'));
+      near.forEach(function (c) { addLocalRow(c, 'near', 'closest'); });
+    }
+    if (rest.length) {
+      body.appendChild(el('div', 'pick-label', 'All local variables'));
+      rest.forEach(function (c) { addLocalRow(c, null, null); });
+    }
+
+    var libGroups = new Map(); // collectionName -> LibraryCandidate[], in first-seen order
+    library.forEach(function (c) {
+      if (!matches(c.name)) return;
+      if (!libGroups.has(c.collectionName)) libGroups.set(c.collectionName, []);
+      libGroups.get(c.collectionName).push(c);
+    });
+    if (libGroups.size) {
+      body.appendChild(el('div', 'pick-label', 'Library'));
+      libGroups.forEach(function (items, collName) {
+        body.appendChild(el('div', 'pick-sublabel', esc(collName)));
+        items.forEach(addLibraryRow);
+      });
+    }
+
+    if (!exact.length && !near.length && !rest.length && !libGroups.size) {
+      body.appendChild(el('div', 'empty', (!local.length && !library.length)
+        ? 'No matching variables. Try enabling the library, or search by name.'
+        : 'No variables match your search.'));
+    }
   }
-  document.getElementById('picker-cancel').addEventListener('click', function () {
-    document.getElementById('picker').classList.remove('show'); state.pendingReplace = null;
-  });
+
+  document.getElementById('picker-search').addEventListener('input', function (e) { renderPickerRows(e.target.value); });
+  document.getElementById('picker-cancel').addEventListener('click', closePicker);
 
   document.getElementById('empty-icon').innerHTML = icon('scan');
   setScanned(false); // open to the empty state; the user triggers the first scan
