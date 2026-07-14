@@ -7,23 +7,26 @@
 
 ## 1. Overview
 
-A Figma plugin that audits a file's variable hygiene. It surfaces three classes of
+A Figma plugin that audits a file's variable hygiene. It surfaces four classes of
 problem and lets the user act on each without leaving the plugin:
 
 1. **Unused variables** — local variables that nothing references (safe-to-delete
    cleanup candidates).
 2. **Broken references** — layers bound to a variable that no longer exists.
-3. **Hardcoded values** — properties set as raw values that could be bound to a
+3. **Unlinked library variables** — layers bound to variables from a library that
+   isn't attached/enabled in the current file (detected via `teamLibrary` attached-
+   collection keys; these resolve fine and are **not** broken — see §5.4).
+4. **Hardcoded values** — properties set as raw values that could be bound to a
    variable (colors, corner radius, stroke weight, auto-layout spacing, typography).
 
 From the results the user can **jump** to the exact layer on canvas, **replace** a
 hardcoded value (or a whole group of them) with a variable, and **delete** unused
-variables.
+variables. Unlinked references, like broken ones, are navigate-only in v1.
 
 ## 2. Goals & non-goals
 
 ### Goals (v1)
-- Detect the three issue classes above with the property coverage in §5.
+- Detect the four issue classes above with the property coverage in §5.
 - One scan, then instant scope filtering (Selection / Page / Document).
 - Group hardcoded values by value with per-occurrence drill-down.
 - Navigate-to-layer, replace-with-variable (single + bulk per group), delete unused
@@ -48,8 +51,9 @@ variables.
 
 - **Unused detection is always whole-file.** A variable is only "unused" if
   *nothing anywhere* binds it, so the usage index requires scanning every page.
-  The scope toggle (§5.4) therefore governs only the **hardcoded** and **broken**
-  results; the **unused** result is always computed over the entire document.
+  The scope toggle (§5.6) therefore governs only the **hardcoded**, **broken**, and
+  **unlinked** results; the **unused** result is always computed over the entire
+  document.
 - **Cross-file blind spot.** The plugin only sees usage within the current file.
   If the file is published as a library, a "locally unused" variable may still be
   consumed by other files. The Unused section shows a persistent caveat to this
@@ -99,7 +103,8 @@ variable-auditor/
   "ui": "src/ui.html",
   "editorType": ["figma"],
   "documentAccess": "dynamic-page",
-  "networkAccess": { "allowedDomains": ["none"] }
+  "networkAccess": { "allowedDomains": ["none"] },
+  "permissions": ["teamlibrary"]
 }
 ```
 
@@ -113,7 +118,7 @@ variable-auditor/
    - the **usage index** (all referenced variable IDs),
    - all **broken references** (tagged with `nodeId` + `pageId`),
    - all **hardcoded occurrences** (tagged with `nodeId` + `pageId` + field + value).
-4. Compute results (§5.2–5.5) and keep the full result cached so scope changes
+4. Compute results (§5.2–5.6) and keep the full result cached so scope changes
    re-filter instantly without re-traversing.
 
 Performance: set `figma.skipInvisibleInstanceChildren = true` before traversal to
@@ -136,7 +141,40 @@ While reading each node's `boundVariables`, resolve every referenced id via
 duplicate lookups). A `null` result ⇒ broken reference; record
 `{ nodeId, pageId, pageName, nodeName, field }`. Each broken reference is navigable.
 
-### 5.4 Hardcoded values (scope-filtered)
+### 5.4 Unlinked library variables
+A bound variable can resolve successfully — `getVariableByIdAsync` returns a
+non-null, `remote: true` variable, and its collection resolves too — while still
+depending on a library the current file hasn't attached/enabled. This is
+deliberately **not** classified as broken (§5.3); it's its own issue class.
+
+Detection reuses the same id-resolution pass as broken references (§5.3), extended
+per unique id:
+1. If `checks.unlinked` is on, first fetch the attached set **once** per scan via
+   `figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync()`. Each returned
+   `LibraryVariableCollection` exposes `name`, `key`, `libraryName`; keep the set of
+   `.key`s (the attached-library collection keys).
+2. For each resolved variable that is non-null and `remote`, resolve its
+   `VariableCollection` via
+   `figma.variables.getVariableCollectionByIdAsync(variable.variableCollectionId)`
+   (cached per collection id to avoid duplicate lookups).
+3. If the collection's `key` is **not** in the attached set ⇒ unlinked; record
+   `{ nodeId, pageId, pageName, nodeName, field, variableName, collectionName,
+   collectionKey }`. Each unlinked reference is navigable, like broken references.
+
+**Graceful failure.** `getAvailableLibraryVariableCollectionsAsync()` requires the
+`teamlibrary` manifest permission (see §4) and can still reject — older Figma
+versions, or the request simply failing. The call is wrapped in `try/catch`; on
+failure, unlinked detection is skipped entirely for that scan (empty result) while
+the rest of the scan (unused / broken / hardcoded) proceeds unaffected. It
+deliberately never falls back to flagging every remote variable as unlinked — that
+would trade a missing feature for a false-positive-prone one.
+
+Results are grouped by `collectionKey` — one row per not-attached library
+collection, with a `count` and its `refs` (`groupUnlinked` in `analysis.ts`). This
+mirrors the hardcoded grouping in spirit (§5.7) but simpler: no per-value bucketing,
+since the grouping key here is just "which library collection."
+
+### 5.5 Hardcoded values (scope-filtered)
 A property is "hardcoded" when it has a concrete value **and** no variable binding.
 Categories and fields:
 
@@ -152,7 +190,7 @@ Skipping zeros for radius/spacing — and `letterSpacing` 0 (the ubiquitous inte
 
 Which hardcoded properties are collected is gated by persisted per-property settings (color / radius / strokeWeight / spacing / typography).
 
-### 5.5 Scope filtering
+### 5.6 Scope filtering
 The full cached result is filtered for display:
 - **Document:** all occurrences.
 - **Page:** `pageId === figma.currentPage.id`.
@@ -162,7 +200,7 @@ The full cached result is filtered for display:
 Changing scope in the UI re-filters the cache (fast); it does not re-traverse.
 (Unused results ignore scope per §3.)
 
-### 5.6 Grouping (hardcoded)
+### 5.7 Grouping (hardcoded)
 Occurrences are grouped by **category + value**:
 - Color key: normalized `#RRGGBB` + alpha (e.g. `#FFFFFF @ 100%`).
 - Number key: `category:value` (e.g. `radius:8`, `itemSpacing:16`, `fontSize:14`)
@@ -173,7 +211,7 @@ Each group carries `{ category, valueKey, label, colorHex?, count, occurrences[]
 Groups sort by descending count. Category **filter chips** in the UI toggle group
 visibility client-side (no backend round-trip).
 
-### 5.7 Replace matching (in `analysis.ts`)
+### 5.8 Replace matching (in `analysis.ts`)
 Given a target value + kind, candidates are local variables of the matching
 `resolvedType` (`COLOR` for colors, `FLOAT` for numbers). For each candidate,
 resolve its value across all modes (following alias chains via a passed-in id→var
@@ -215,7 +253,7 @@ none), `navigate{nodeId,pageId}`, `getReplaceCandidates{target}`,
 `replace{groupRef, variableId}`, `deleteVariables{ids[]}`.
 
 **code → UI:** `scanProgress{scanned}`, `scanResult{scope, summary, unused[],
-broken[], hardcoded[]}`, `replaceCandidates{target, exact[], all[]}`,
+broken[], unlinked[], hardcoded[]}`, `replaceCandidates{target, exact[], all[]}`,
 `actionResult{ok, message, removedIds?}`, `error{message}`.
 
 Category filtering for hardcoded groups is handled entirely in the UI (it already
@@ -233,25 +271,31 @@ single-theme (no dark mode in v1).
   cards, soft shadows (no glass). Brand gradient `linear-gradient(135deg,#A45CFF,
   #6C5CFF 50%,#4D8AFF)` used **only** on the logo, active/primary states, and the
   Replace CTA. Semantic dots: unused violet `#7C5CFF`, broken rose `#F0396B`,
-  hardcoded amber `#E08600`, ok mint `#0FB981`.
+  unlinked blue `#2E90FA`, hardcoded amber `#E08600`, ok mint `#0FB981`.
 - **Type:** `Geist` (variable) for UI, `Geist Mono` (variable) for raw values —
   both embedded as `@font-face` data URIs (offline-safe). Uppercase micro-labels
   with letter-spacing.
 - **Icons:** Lucide, inlined as SVG (ghost = orphaned/unused, triangle-alert =
-  broken, `code` = hardcoded, unlink = broken-row glyph, crosshair/locate = jump,
-  refresh = rescan, chevrons, trash, info, arrow-left-right = replace).
+  broken, `unplug` = unlinked library variables, `code` = hardcoded, unlink =
+  broken-row glyph, crosshair/locate = jump, refresh = rescan, chevrons, trash,
+  info, arrow-left-right = replace).
 
 **Layout (~400 px panel):**
 - Header: gradient logo + title/subtitle + Rescan icon button.
 - iOS-style segmented **scope control** (Selection / Page / Document; default Page).
-- Three glass-free **metric chips**: Unused · Broken · Hardcoded counts.
-- Scrollable **results** with three collapsible cards (rounded 16px, hairline
+- Four glass-free **metric chips**: Unused · Broken · Unlinked · Hardcoded counts
+  (2×2 grid when all four are enabled; `repeat(N, 1fr)` otherwise).
+- Scrollable **results** with four collapsible cards (rounded 16px, hairline
   border, soft shadow):
   1. **Unused variables** — library caveat banner; rows with color swatch or mono
      type-glyph, name, collection, value, per-row trash; section "Delete selected".
   2. **Broken references** — rows with unlink glyph, layer name, `field` +
      `missing` tag, page, locate button (navigate-only in v1).
-  3. **Hardcoded values** — category filter chips; grouped rows (`#FFFFFF · 14
+  3. **Unlinked library variables** — blue-tinted caveat banner; rows grouped by
+     library collection (`unplug` glyph, collection name, layer count) that expand
+     to per-occurrence rows, each with its bound `field`, page, and a locate
+     button. Navigate-only, like broken references — no replace/import action.
+  4. **Hardcoded values** — category filter chips; grouped rows (`#FFFFFF · 14
      layers`) that expand to per-occurrence rows each with a locate button; a
      gradient **Replace** action per group opening the variable picker.
 - Footer: last-scan scope + issue count + status.
@@ -262,10 +306,12 @@ single-theme (no dark mode in v1).
 The plugin opens to an empty state with a Scan button; the first scan runs on demand
 (no auto-scan). Scope can be pre-selected before scanning.
 
-Settings also carries per-property toggles for hardcoded values (Colors, Corner
-radius, Stroke weight, Spacing, Typography), persisted; disabled properties are
-skipped during the scan. (The former in-results category filter chips were removed
-in favor of these.)
+The settings dialog's four top-level checks — Unused, Broken, Unlinked libraries,
+Hardcoded — persist across sessions and gate both their chip and their card. Only
+Hardcoded expands into per-property sub-toggles (Colors, Corner radius, Stroke
+weight, Spacing, Typography); disabled properties are skipped during the scan.
+Unlinked has no sub-properties — it's a single check. (The former in-results
+category filter chips for hardcoded were removed in favor of these toggles.)
 
 **Layout & scrolling:** the panel is a **fixed-height flex column** — header, scope,
 metrics, and footer stay pinned while **only the results region scrolls**. Result
@@ -281,7 +327,9 @@ under `prefers-reduced-motion`. Empty states per section ("No unused variables")
 ## 9. Edge cases & error handling
 - No selection under Selection scope → prompt to select.
 - Empty file / no variables → friendly empty state.
-- `figma.mixed` properties handled per §5.4.
+- `figma.mixed` properties handled per §5.5.
+- `teamLibrary` unavailable or the request fails → unlinked detection degrades to
+  an empty result for that scan rather than crashing or over-flagging (§5.4).
 - Locked nodes or instance-child fields that reject edits → counted as `skipped`
   in replace results, not a crash.
 - Node or variable deleted between scan and action → detected on action; message

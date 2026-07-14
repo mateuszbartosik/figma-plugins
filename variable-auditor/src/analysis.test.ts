@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { rgbaToHex, formatNumber, groupMeta, computeUnused, groupHardcoded, resolveVariableValue } from './analysis.ts';
-import type { Occurrence } from './types.ts';
+import { rgbaToHex, formatNumber, groupMeta, computeUnused, groupHardcoded, groupUnlinked, resolveVariableValue } from './analysis.ts';
+import type { Occurrence, UnlinkedRef } from './types.ts';
 import type { ResolvableVar } from './analysis.ts';
 
 test('rgbaToHex converts 0..1 channels to uppercase hex', () => {
@@ -78,6 +78,32 @@ test('groupHardcoded groups by valueKey and sorts by count desc', () => {
   assert.strictEqual(groups[1].valueKey, 'radius:8');         // 2 occurrences
   assert.strictEqual(groups[1].count, 2);
   assert.strictEqual(groups[0].colorHex, '#FFFFFF');
+});
+
+function unlinkedRef(over: Partial<UnlinkedRef>): UnlinkedRef {
+  return {
+    nodeId: 'n', nodeName: 'N', pageId: 'p', pageName: 'P',
+    field: 'fills', variableName: 'brand/blue', collectionName: 'Brand Colors', collectionKey: 'key-a',
+    ...over,
+  };
+}
+
+test('groupUnlinked groups by collectionKey, counts refs, and sorts by count desc then collectionName asc', () => {
+  const refs: UnlinkedRef[] = [
+    unlinkedRef({ collectionKey: 'key-a', collectionName: 'Zeta Library' }),
+    unlinkedRef({ collectionKey: 'key-b', collectionName: 'Alpha Library', nodeId: 'n2' }),
+    unlinkedRef({ collectionKey: 'key-b', collectionName: 'Alpha Library', nodeId: 'n3' }),
+    unlinkedRef({ collectionKey: 'key-c', collectionName: 'Beta Library', nodeId: 'n4' }),
+    unlinkedRef({ collectionKey: 'key-c', collectionName: 'Beta Library', nodeId: 'n5' }),
+  ];
+  const groups = groupUnlinked(refs);
+  assert.strictEqual(groups.length, 3);
+  // key-b and key-c tie at count 2 (sorted before key-a's 1); tie broken by collectionName asc.
+  assert.deepStrictEqual(groups.map(g => g.collectionKey), ['key-b', 'key-c', 'key-a']);
+  assert.deepStrictEqual(groups.map(g => g.count), [2, 2, 1]);
+  assert.strictEqual(groups[0].collectionName, 'Alpha Library');
+  assert.strictEqual(groups[0].refs.length, 2);
+  assert.deepStrictEqual(groups[0].refs.map(r => r.nodeId), ['n2', 'n3']);
 });
 
 test('resolveVariableValue resolves concrete and alias chains', () => {

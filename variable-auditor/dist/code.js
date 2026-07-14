@@ -106,6 +106,21 @@
     groups.sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
     return groups;
   }
+  function groupUnlinked(refs) {
+    const byKey = /* @__PURE__ */ new Map();
+    for (const r of refs) {
+      let g = byKey.get(r.collectionKey);
+      if (!g) {
+        g = { collectionKey: r.collectionKey, collectionName: r.collectionName, count: 0, refs: [] };
+        byKey.set(r.collectionKey, g);
+      }
+      g.refs.push(r);
+      g.count++;
+    }
+    const groups = [...byKey.values()];
+    groups.sort((a, b) => b.count - a.count || a.collectionName.localeCompare(b.collectionName));
+    return groups;
+  }
   function isAlias(v) {
     return typeof v === "object" && v !== null && v.type === "VARIABLE_ALIAS";
   }
@@ -179,7 +194,7 @@
     "src/code.ts"(exports) {
       init_analysis();
       figma.showUI(__html__, { width: 404, height: 660 });
-      var checks = { unused: true, broken: true, hardcoded: true };
+      var checks = { unused: true, broken: true, hardcoded: true, unlinked: true };
       var props = { color: true, radius: true, strokeWeight: true, spacing: true, typography: true };
       var lastScope = "page";
       var CHECKS_KEY = "variable-auditor:checks";
@@ -354,6 +369,17 @@
               }
             }
           }
+          let attachedKeys = /* @__PURE__ */ new Set();
+          let teamLibOk = false;
+          if (checks.unlinked) {
+            try {
+              const avail = yield figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync();
+              attachedKeys = new Set(avail.map((c) => c.key));
+              teamLibOk = true;
+            } catch (e) {
+              teamLibOk = false;
+            }
+          }
           const refs = [];
           const occurrencesAll = [];
           let scanned = 0;
@@ -366,17 +392,51 @@
             }
           }
           const brokenAll = [];
-          if (checks.broken) {
-            const existence = /* @__PURE__ */ new Map();
+          const unlinkedRefsAll = [];
+          if (checks.broken || checks.unlinked) {
+            const resolvedVar = /* @__PURE__ */ new Map();
+            const resolvedColl = /* @__PURE__ */ new Map();
+            const unlinkedMark = /* @__PURE__ */ new Map();
             for (const { id } of refs) {
-              if (existence.has(id))
+              if (resolvedVar.has(id))
                 continue;
               const v = yield figma.variables.getVariableByIdAsync(id);
-              existence.set(id, v !== null);
+              resolvedVar.set(id, v);
+              if (v === null)
+                continue;
+              if (checks.unlinked && teamLibOk && v.remote) {
+                let c = resolvedColl.get(v.variableCollectionId);
+                if (c === void 0) {
+                  c = yield figma.variables.getVariableCollectionByIdAsync(v.variableCollectionId);
+                  resolvedColl.set(v.variableCollectionId, c);
+                }
+                if (c && !attachedKeys.has(c.key)) {
+                  unlinkedMark.set(id, { variableName: v.name, collectionName: c.name, collectionKey: c.key });
+                }
+              }
             }
-            for (const { id, ref } of refs)
-              if (!existence.get(id))
-                brokenAll.push(ref);
+            if (checks.broken) {
+              for (const { id, ref } of refs)
+                if (resolvedVar.get(id) === null)
+                  brokenAll.push(ref);
+            }
+            if (checks.unlinked) {
+              for (const { id, ref } of refs) {
+                const mark = unlinkedMark.get(id);
+                if (mark) {
+                  unlinkedRefsAll.push({
+                    nodeId: ref.nodeId,
+                    nodeName: ref.nodeName,
+                    pageId: ref.pageId,
+                    pageName: ref.pageName,
+                    field: ref.field,
+                    variableName: mark.variableName,
+                    collectionName: mark.collectionName,
+                    collectionKey: mark.collectionKey
+                  });
+                }
+              }
+            }
           }
           let unused = [];
           if (checks.unused) {
@@ -399,24 +459,27 @@
             });
             unused = computeUnused(infos, usedIds);
           }
-          return { unused, brokenAll, occurrencesAll };
+          return { unused, brokenAll, occurrencesAll, unlinkedRefsAll };
         });
       }
       function filterByScope(scope) {
         if (!lastScan)
-          return { scope, summary: { unused: 0, broken: 0, hardcoded: 0 }, unused: [], broken: [], hardcoded: [] };
+          return { scope, summary: { unused: 0, broken: 0, hardcoded: 0, unlinked: 0 }, unused: [], broken: [], hardcoded: [], unlinked: [] };
         const currentPageId = figma.currentPage.id;
         const selIds = scope === "selection" ? collectSelectionIds() : null;
         const inScope = (nodeId, pageId) => scope === "document" ? true : scope === "page" ? pageId === currentPageId : !!selIds && selIds.has(nodeId);
         const broken = lastScan.brokenAll.filter((b) => inScope(b.nodeId, b.pageId));
         const occ = lastScan.occurrencesAll.filter((o) => inScope(o.nodeId, o.pageId));
         const hardcoded = groupHardcoded(occ);
+        const unlinkedRefs = lastScan.unlinkedRefsAll.filter((u) => inScope(u.nodeId, u.pageId));
+        const unlinked = groupUnlinked(unlinkedRefs);
         return {
           scope,
-          summary: { unused: lastScan.unused.length, broken: broken.length, hardcoded: occ.length },
+          summary: { unused: lastScan.unused.length, broken: broken.length, hardcoded: occ.length, unlinked: unlinkedRefs.length },
           unused: lastScan.unused,
           broken,
-          hardcoded
+          hardcoded,
+          unlinked
         };
       }
       function applyBinding(node, o, variable) {

@@ -1,4 +1,4 @@
-import type { RGBA, HardcodedKind, HardcodedCategory, UnusedVariable, VariableResolvedType, Occurrence, HardcodedGroup, CandidateVariable } from './types.ts';
+import type { RGBA, HardcodedKind, HardcodedCategory, UnusedVariable, VariableResolvedType, Occurrence, HardcodedGroup, CandidateVariable, UnlinkedRef, UnlinkedGroup } from './types.ts';
 
 function channelToHex(v: number): string {
   const n = Math.max(0, Math.min(255, Math.round(v * 255)));
@@ -91,6 +91,22 @@ export function groupHardcoded(occurrences: Occurrence[]): HardcodedGroup[] {
     g.label = groupMeta(g.kind, g.colorHex ?? null, g.opacity ?? null, g.num ?? null).label;
   }
   groups.sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+  return groups;
+}
+
+export function groupUnlinked(refs: UnlinkedRef[]): UnlinkedGroup[] {
+  const byKey = new Map<string, UnlinkedGroup>();
+  for (const r of refs) {
+    let g = byKey.get(r.collectionKey);
+    if (!g) {
+      g = { collectionKey: r.collectionKey, collectionName: r.collectionName, count: 0, refs: [] };
+      byKey.set(r.collectionKey, g);
+    }
+    g.refs.push(r);
+    g.count++;
+  }
+  const groups = [...byKey.values()];
+  groups.sort((a, b) => b.count - a.count || a.collectionName.localeCompare(b.collectionName));
   return groups;
 }
 

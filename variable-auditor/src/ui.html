@@ -12,6 +12,7 @@
     --rose:#F0396B; --rose-ink:#C81E52;
     --amber:#E08600; --amber-ink:#B26A00;
     --mint:#0FB981;
+    --blue:#2E90FA; --blue-ink:#175CD3;
     --grad:linear-gradient(135deg,#A45CFF 0%,#6C5CFF 50%,#4D8AFF 100%);
     --mono:'Geist Mono',ui-monospace,Menlo,Consolas,monospace;
     --sans:'Geist',-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
@@ -115,6 +116,9 @@
     background:rgba(124,92,255,.07); border:1px solid rgba(124,92,255,.16);}
   .caveat svg{flex-shrink:0; color:var(--violet); margin-top:1px;}
   .caveat p{font-size:10.5px; line-height:1.5; color:var(--violet-ink);}
+  .caveat.blue{background:rgba(46,144,250,.07); border-color:rgba(46,144,250,.16);}
+  .caveat.blue svg{color:var(--blue);}
+  .caveat.blue p{color:var(--blue-ink);}
 
   .replace{display:inline-flex; align-items:center; gap:5px; padding:5px 10px; border-radius:9px;
     border:1px solid var(--border-2); background:var(--surface); color:var(--text); cursor:pointer;
@@ -186,6 +190,7 @@
   <span id="ic-triangle"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></span>
   <span id="ic-code"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg></span>
   <span id="ic-unlink"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18.84 12.25 1.72-1.71h-.02a5.004 5.004 0 0 0-.12-7.07 5.006 5.006 0 0 0-6.95 0l-1.72 1.71"/><path d="m5.17 11.75-1.71 1.71a5.004 5.004 0 0 0 .12 7.07 5.006 5.006 0 0 0 6.95 0l1.71-1.71"/><line x1="8" x2="8" y1="2" y2="5"/><line x1="2" x2="5" y1="8" y2="8"/><line x1="16" x2="16" y1="19" y2="22"/><line x1="19" x2="22" y1="16" y2="16"/></svg></span>
+  <span id="ic-unplug"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 5 3-3"/><path d="m2 22 3-3"/><path d="M6.3 20.3a2.4 2.4 0 0 0 3.4 0L12 18l-6-6-2.3 2.3a2.4 2.4 0 0 0 0 3.4Z"/><path d="M7.5 13.5 10 11"/><path d="M10.5 16.5 13 14"/><path d="m12 6 6 6 2.3-2.3a2.4 2.4 0 0 0 0-3.4l-2.6-2.6a2.4 2.4 0 0 0-3.4 0Z"/></svg></span>
   <span id="ic-locate"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" x2="5" y1="12" y2="12"/><line x1="19" x2="22" y1="12" y2="12"/><line x1="12" x2="12" y1="2" y2="5"/><line x1="12" x2="12" y1="19" y2="22"/><circle cx="12" cy="12" r="7"/></svg></span>
   <span id="ic-trash"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg></span>
   <span id="ic-swap"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg></span>
@@ -233,12 +238,14 @@
       <div class="metrics">
         <div class="chip" id="chip-unused"><div class="lab"><span class="dot" style="background:var(--violet)"></span>Unused</div><div class="num" id="m-unused">0</div></div>
         <div class="chip" id="chip-broken"><div class="lab"><span class="dot" style="background:var(--rose)"></span>Broken</div><div class="num" id="m-broken">0</div></div>
+        <div class="chip" id="chip-unlinked"><div class="lab"><span class="dot" style="background:var(--blue)"></span>Unlinked</div><div class="num" id="m-unlinked">0</div></div>
         <div class="chip" id="chip-hardcoded"><div class="lab"><span class="dot" style="background:var(--amber)"></span>Hardcoded</div><div class="num" id="m-hardcoded">0</div></div>
       </div>
 
       <div class="results" id="results">
         <section class="card" data-card id="card-unused" hidden></section>
         <section class="card" data-card id="card-broken" hidden></section>
+        <section class="card" data-card id="card-unlinked" hidden></section>
         <section class="card" data-card id="card-hardcoded" hidden></section>
       </div>
 
@@ -270,6 +277,7 @@
           <div class="dialog-title">Checks to run</div>
           <label class="setrow"><span>Unused variables</span><input type="checkbox" class="chk-check" data-check="unused" checked></label>
           <label class="setrow"><span>Broken references</span><input type="checkbox" class="chk-check" data-check="broken" checked></label>
+          <label class="setrow"><span>Unlinked libraries</span><input type="checkbox" class="chk-check" data-check="unlinked" checked></label>
           <label class="setrow"><span>Hardcoded values</span><input type="checkbox" class="chk-check" data-check="hardcoded" checked></label>
           <div class="setsub" id="setsub-hardcoded">
             <label class="setrow sub"><span>Colors</span><input type="checkbox" class="chk-prop" data-prop="color" checked></label>
@@ -287,7 +295,7 @@
   </div>
 
 <script>
-  var state = { scope: 'page', scanned: false, result: null, pendingReplace: null, checks: { unused: true, broken: true, hardcoded: true }, props: { color: true, radius: true, strokeWeight: true, spacing: true, typography: true } };
+  var state = { scope: 'page', scanned: false, result: null, pendingReplace: null, checks: { unused: true, broken: true, hardcoded: true, unlinked: true }, props: { color: true, radius: true, strokeWeight: true, spacing: true, typography: true } };
   var selectedUnused = new Set();
   function post(msg) { parent.postMessage({ pluginMessage: msg }, '*'); }
   function icon(id, cls) {
@@ -384,22 +392,24 @@
   function render(r) {
     document.getElementById('m-unused').textContent = r.summary.unused;
     document.getElementById('m-broken').textContent = r.summary.broken;
+    document.getElementById('m-unlinked').textContent = r.summary.unlinked;
     document.getElementById('m-hardcoded').textContent = r.summary.hardcoded;
     var enabledChips = 0;
-    ['unused', 'broken', 'hardcoded'].forEach(function (k) {
+    ['unused', 'broken', 'unlinked', 'hardcoded'].forEach(function (k) {
       var chip = document.getElementById('chip-' + k);
       var on = !!state.checks[k];
       if (chip) chip.hidden = !on;
       if (on) enabledChips++;
     });
     var metricsEl = document.querySelector('.metrics');
-    if (metricsEl) metricsEl.style.gridTemplateColumns = 'repeat(' + enabledChips + ', 1fr)';
+    if (metricsEl) metricsEl.style.gridTemplateColumns = enabledChips === 4 ? 'repeat(2, 1fr)' : 'repeat(' + enabledChips + ', 1fr)';
     var scopeLabel = { selection: 'Selection', page: 'Page', document: 'Document' }[r.scope] || r.scope;
-    var total = r.summary.unused + r.summary.broken + r.summary.hardcoded;
+    var total = r.summary.unused + r.summary.broken + r.summary.unlinked + r.summary.hardcoded;
     var fs = document.getElementById('foot-status');
     if (fs) fs.innerHTML = 'Scanned <strong>' + esc(scopeLabel) + '</strong> · ' + total + ' issue' + (total === 1 ? '' : 's') + ' found';
     renderUnused(r.unused);
     renderBroken(r.broken);
+    renderUnlinked(r.unlinked);
     renderHardcoded(r.hardcoded);
   }
 
@@ -415,6 +425,7 @@
     violet: { bg: 'rgba(124,92,255,.12)', fg: 'var(--violet)' },
     rose:   { bg: 'rgba(240,57,107,.12)', fg: 'var(--rose)' },
     amber:  { bg: 'rgba(224,134,0,.12)',  fg: 'var(--amber)' },
+    blue:   { bg: 'rgba(46,144,250,.12)', fg: 'var(--blue)' },
   };
 
   function renderUnused(list) {
@@ -496,6 +507,41 @@
     sb.appendChild(inner); body.appendChild(sb); card.appendChild(body);
   }
 
+  function renderUnlinked(groups) {
+    var card = document.getElementById('card-unlinked');
+    if (!state.checks.unlinked) { card.hidden = true; return; }
+    card.hidden = false; card.innerHTML = '';
+    var total = groups.reduce(function (s, g) { return s + g.count; }, 0);
+    card.appendChild(sectionHeader('unplug', 'Unlinked library variables', total, TINT.blue));
+    var body = el('div', 'swrap'); var sb = el('div', 'sbody'); var inner = el('div', 'sbody-inner');
+    inner.appendChild(el('div', 'caveat blue', icon('info') +
+      '<p>Bound to variables from libraries not enabled in this file.</p>'));
+    if (!groups.length) {
+      inner.appendChild(el('div', 'empty', 'No unlinked library variables.'));
+    } else {
+      groups.forEach(function (g) {
+        var grp = el('div', 'grp');
+        var left = '<div class="tglyph" style="color:var(--blue)">' + icon('unplug') + '</div>';
+        var head = el('div', 'row grow');
+        head.innerHTML = left +
+          '<div class="rmain"><div class="rname">' + esc(g.collectionName) + '</div><div class="rmeta">' + g.count + ' layers</div></div>' +
+          '<div class="ract">' + icon('chevron', 'grow-chev') + '</div>';
+        grp.appendChild(head);
+        var ow = el('div', 'occ-wrap'); var oc = el('div', 'occ'); var oi = el('div', 'occ-inner');
+        g.refs.forEach(function (ref) {
+          var orow = el('div', 'orow');
+          orow.innerHTML = '<div class="obar"></div><span class="oname">' + esc(ref.nodeName) + '</span>' +
+            '<span class="opage">' + esc(fieldLabel(ref.field)) + ' · ' + esc(ref.pageName) + '</span>' +
+            '<button class="mini" aria-label="Locate">' + icon('locate') + '</button>';
+          orow.querySelector('.mini').addEventListener('click', function () { post({ type: 'navigate', nodeId: ref.nodeId, pageId: ref.pageId }); });
+          oi.appendChild(orow);
+        });
+        oc.appendChild(oi); ow.appendChild(oc); grp.appendChild(ow); inner.appendChild(grp);
+      });
+    }
+    sb.appendChild(inner); body.appendChild(sb); card.appendChild(body);
+  }
+
   function renderHardcoded(groups) {
     var card = document.getElementById('card-hardcoded');
     if (!state.checks.hardcoded) { card.hidden = true; return; }
@@ -533,7 +579,19 @@
 
   function esc(s) { return String(s).replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }); }
   function cap(t) { return t.charAt(0) + t.slice(1).toLowerCase(); }
-  function fieldLabel(f) { return ({ fills: 'Fill', strokes: 'Stroke', cornerRadius: 'Corner radius', strokeWeight: 'Stroke weight', fontSize: 'Font size', lineHeight: 'Line height', letterSpacing: 'Letter spacing', itemSpacing: 'Item spacing' })[f] || f; }
+  function fieldLabel(f) {
+    return ({
+      fills: 'Fill', strokes: 'Stroke',
+      cornerRadius: 'Corner radius',
+      topLeftRadius: 'Top-left radius', topRightRadius: 'Top-right radius',
+      bottomLeftRadius: 'Bottom-left radius', bottomRightRadius: 'Bottom-right radius',
+      strokeWeight: 'Stroke weight',
+      paddingLeft: 'Padding left', paddingRight: 'Padding right',
+      paddingTop: 'Padding top', paddingBottom: 'Padding bottom',
+      itemSpacing: 'Item spacing',
+      fontSize: 'Font size', lineHeight: 'Line height', letterSpacing: 'Letter spacing', fontWeight: 'Font weight',
+    })[f] || f;
+  }
   function formatGlyph(g) { var n = g.num != null ? String(g.num) : '#'; return n.length <= 3 ? n : '#'; }
   function toast(msg) { var t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(function () { t.classList.remove('show'); }, 2600); }
 

@@ -1,16 +1,16 @@
 import {
-  rgbaToHex, formatNumber, groupMeta, computeUnused, groupHardcoded,
+  rgbaToHex, formatNumber, groupMeta, computeUnused, groupHardcoded, groupUnlinked,
   resolveVariableValue, rankCandidates,
   type LocalVarInfo, type ResolvableVar, type ResolvedCandidate,
 } from './analysis.ts';
 import type {
   Scope, Occurrence, BrokenReference, UnusedVariable, HardcodedGroup,
-  ScanResult, UIToPlugin, Checks, HardcodedProps,
+  UnlinkedRef, UnlinkedGroup, ScanResult, UIToPlugin, Checks, HardcodedProps,
 } from './types.ts';
 
 figma.showUI(__html__, { width: 404, height: 660 });
 
-let checks: Checks = { unused: true, broken: true, hardcoded: true };
+let checks: Checks = { unused: true, broken: true, hardcoded: true, unlinked: true };
 let props: HardcodedProps = { color: true, radius: true, strokeWeight: true, spacing: true, typography: true };
 let lastScope: Scope = 'page';
 const CHECKS_KEY = 'variable-auditor:checks';
@@ -26,6 +26,7 @@ interface FullScan {
   unused: UnusedVariable[];
   brokenAll: BrokenReference[];
   occurrencesAll: Occurrence[];
+  unlinkedRefsAll: UnlinkedRef[];
 }
 let lastScan: FullScan | null = null;
 
@@ -182,6 +183,20 @@ async function fullScan(): Promise<FullScan> {
     }
   }
 
+  // Attached-library collection keys, needed for unlinked-variable detection.
+  // Fetched once, defensively: if teamLibrary is unavailable (older Figma, or the
+  // request fails), unlinked detection is skipped entirely rather than flagging
+  // everything as unlinked.
+  let attachedKeys = new Set<string>();
+  let teamLibOk = false;
+  if (checks.unlinked) {
+    try {
+      const avail = await figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync();
+      attachedKeys = new Set(avail.map(c => c.key));
+      teamLibOk = true;
+    } catch (e) { teamLibOk = false; }
+  }
+
   const refs: { id: string; ref: BrokenReference }[] = [];
   const occurrencesAll: Occurrence[] = [];
   let scanned = 0;
@@ -193,16 +208,44 @@ async function fullScan(): Promise<FullScan> {
     }
   }
 
-  // Broken references: resolve each unique referenced id once.
+  // Broken references + unlinked library variables: resolve each unique referenced
+  // id once, sharing the lookup between both checks.
   const brokenAll: BrokenReference[] = [];
-  if (checks.broken) {
-    const existence = new Map<string, boolean>();
+  const unlinkedRefsAll: UnlinkedRef[] = [];
+  if (checks.broken || checks.unlinked) {
+    const resolvedVar = new Map<string, Variable | null>();
+    const resolvedColl = new Map<string, VariableCollection | null>();
+    const unlinkedMark = new Map<string, { variableName: string; collectionName: string; collectionKey: string }>();
     for (const { id } of refs) {
-      if (existence.has(id)) continue;
+      if (resolvedVar.has(id)) continue;
       const v = await figma.variables.getVariableByIdAsync(id);
-      existence.set(id, v !== null);
+      resolvedVar.set(id, v);
+      if (v === null) continue; // broken — handled below
+      if (checks.unlinked && teamLibOk && v.remote) {
+        let c = resolvedColl.get(v.variableCollectionId);
+        if (c === undefined) {
+          c = await figma.variables.getVariableCollectionByIdAsync(v.variableCollectionId);
+          resolvedColl.set(v.variableCollectionId, c);
+        }
+        if (c && !attachedKeys.has(c.key)) {
+          unlinkedMark.set(id, { variableName: v.name, collectionName: c.name, collectionKey: c.key });
+        }
+      }
     }
-    for (const { id, ref } of refs) if (!existence.get(id)) brokenAll.push(ref);
+    if (checks.broken) {
+      for (const { id, ref } of refs) if (resolvedVar.get(id) === null) brokenAll.push(ref);
+    }
+    if (checks.unlinked) {
+      for (const { id, ref } of refs) {
+        const mark = unlinkedMark.get(id);
+        if (mark) {
+          unlinkedRefsAll.push({
+            nodeId: ref.nodeId, nodeName: ref.nodeName, pageId: ref.pageId, pageName: ref.pageName,
+            field: ref.field, variableName: mark.variableName, collectionName: mark.collectionName, collectionKey: mark.collectionKey,
+          });
+        }
+      }
+    }
   }
 
   // Unused
@@ -223,11 +266,11 @@ async function fullScan(): Promise<FullScan> {
     unused = computeUnused(infos, usedIds);
   }
 
-  return { unused, brokenAll, occurrencesAll };
+  return { unused, brokenAll, occurrencesAll, unlinkedRefsAll };
 }
 
 function filterByScope(scope: Scope): ScanResult {
-  if (!lastScan) return { scope, summary: { unused: 0, broken: 0, hardcoded: 0 }, unused: [], broken: [], hardcoded: [] };
+  if (!lastScan) return { scope, summary: { unused: 0, broken: 0, hardcoded: 0, unlinked: 0 }, unused: [], broken: [], hardcoded: [], unlinked: [] };
   const currentPageId = figma.currentPage.id;
   const selIds = scope === 'selection' ? collectSelectionIds() : null;
   const inScope = (nodeId: string, pageId: string) =>
@@ -237,10 +280,12 @@ function filterByScope(scope: Scope): ScanResult {
   const broken = lastScan.brokenAll.filter(b => inScope(b.nodeId, b.pageId));
   const occ = lastScan.occurrencesAll.filter(o => inScope(o.nodeId, o.pageId));
   const hardcoded: HardcodedGroup[] = groupHardcoded(occ);
+  const unlinkedRefs = lastScan.unlinkedRefsAll.filter(u => inScope(u.nodeId, u.pageId));
+  const unlinked: UnlinkedGroup[] = groupUnlinked(unlinkedRefs);
   return {
     scope,
-    summary: { unused: lastScan.unused.length, broken: broken.length, hardcoded: occ.length },
-    unused: lastScan.unused, broken, hardcoded,
+    summary: { unused: lastScan.unused.length, broken: broken.length, hardcoded: occ.length, unlinked: unlinkedRefs.length },
+    unused: lastScan.unused, broken, hardcoded, unlinked,
   };
 }
 

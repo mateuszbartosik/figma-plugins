@@ -57,7 +57,25 @@ export interface BrokenReference {
   variableId: string;     // the missing id
 }
 
-export interface ScanSummary { unused: number; broken: number; hardcoded: number }
+export interface UnlinkedRef {
+  nodeId: string;
+  nodeName: string;
+  pageId: string;
+  pageName: string;
+  field: string;
+  variableName: string;
+  collectionName: string;
+  collectionKey: string;
+}
+
+export interface UnlinkedGroup {
+  collectionKey: string;
+  collectionName: string;
+  count: number;
+  refs: UnlinkedRef[];
+}
+
+export interface ScanSummary { unused: number; broken: number; hardcoded: number; unlinked: number }
 
 export interface ScanResult {
   scope: Scope;
@@ -65,6 +83,7 @@ export interface ScanResult {
   unused: UnusedVariable[];
   broken: BrokenReference[];
   hardcoded: HardcodedGroup[];
+  unlinked: UnlinkedGroup[];
 }
 
 export interface CandidateVariable {
@@ -76,7 +95,7 @@ export interface CandidateVariable {
   colorHex?: string;
 }
 
-export interface Checks { unused: boolean; broken: boolean; hardcoded: boolean }
+export interface Checks { unused: boolean; broken: boolean; hardcoded: boolean; unlinked: boolean }
 
 export interface HardcodedProps { color: boolean; radius: boolean; strokeWeight: boolean; spacing: boolean; typography: boolean }
 
