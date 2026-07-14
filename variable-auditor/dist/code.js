@@ -225,12 +225,41 @@
           return;
         paints.forEach((paint, i) => {
           var _a, _b;
-          if (paint.type !== "SOLID" || paint.visible === false)
+          if (paint.visible === false)
             return;
-          if ((_a = paint.boundVariables) == null ? void 0 : _a.color)
+          if (paint.type === "SOLID") {
+            if ((_a = paint.boundVariables) == null ? void 0 : _a.color)
+              return;
+            const colorHex = rgbaToHex(__spreadProps(__spreadValues({}, paint.color), { a: 1 }));
+            const opacity = (_b = paint.opacity) != null ? _b : 1;
+            const meta = groupMeta("color", colorHex, opacity, null);
+            out.push({
+              nodeId: node.id,
+              nodeName: node.name,
+              pageId: page.id,
+              pageName: page.name,
+              category: meta.category,
+              kind: "color",
+              field: key,
+              paintIndex: i,
+              valueKey: meta.valueKey,
+              colorHex,
+              opacity
+            });
             return;
-          const colorHex = rgbaToHex(__spreadProps(__spreadValues({}, paint.color), { a: 1 }));
-          const opacity = (_b = paint.opacity) != null ? _b : 1;
+          }
+          if (paint.type === "GRADIENT_LINEAR" || paint.type === "GRADIENT_RADIAL" || paint.type === "GRADIENT_ANGULAR" || paint.type === "GRADIENT_DIAMOND") {
+            pushGradientStopOccurrences(node, page, key, paint, i, out);
+          }
+        });
+      }
+      function pushGradientStopOccurrences(node, page, key, paint, paintIndex, out) {
+        paint.gradientStops.forEach((stop) => {
+          var _a, _b;
+          if ((_a = stop.boundVariables) == null ? void 0 : _a.color)
+            return;
+          const colorHex = rgbaToHex(stop.color);
+          const opacity = (_b = stop.color.a) != null ? _b : 1;
           const meta = groupMeta("color", colorHex, opacity, null);
           out.push({
             nodeId: node.id,
@@ -239,11 +268,42 @@
             pageName: page.name,
             category: meta.category,
             kind: "color",
-            field: key,
-            paintIndex: i,
+            field: `${key}[gradientStop]`,
+            paintIndex,
             valueKey: meta.valueKey,
             colorHex,
-            opacity
+            opacity,
+            replaceable: false
+          });
+        });
+      }
+      function pushEffectColorOccurrences(node, page, out) {
+        const effects = node.effects;
+        if (!Array.isArray(effects))
+          return;
+        effects.forEach((effect) => {
+          var _a, _b;
+          if (effect.type !== "DROP_SHADOW" && effect.type !== "INNER_SHADOW")
+            return;
+          if (effect.visible === false)
+            return;
+          if ((_a = effect.boundVariables) == null ? void 0 : _a.color)
+            return;
+          const colorHex = rgbaToHex(effect.color);
+          const opacity = (_b = effect.color.a) != null ? _b : 1;
+          const meta = groupMeta("color", colorHex, opacity, null);
+          out.push({
+            nodeId: node.id,
+            nodeName: node.name,
+            pageId: page.id,
+            pageName: page.name,
+            category: meta.category,
+            kind: "color",
+            field: "effects",
+            valueKey: meta.valueKey,
+            colorHex,
+            opacity,
+            replaceable: false
           });
         });
       }
@@ -288,6 +348,8 @@
               pushColorOccurrences(node, page, "fills", occ);
             if ("strokes" in node && Array.isArray(node.strokes))
               pushColorOccurrences(node, page, "strokes", occ);
+            if ("effects" in node)
+              pushEffectColorOccurrences(node, page, occ);
           }
           if (props2.radius && "cornerRadius" in node) {
             const cr = node.cornerRadius;
@@ -609,6 +671,10 @@
             const occ = ((_d = lastScan == null ? void 0 : lastScan.occurrencesAll) != null ? _d : []).filter((o) => o.valueKey === msg.valueKey);
             let replaced = 0, skipped = 0;
             for (const o of occ) {
+              if (o.replaceable === false) {
+                skipped++;
+                continue;
+              }
               const node = yield figma.getNodeByIdAsync(o.nodeId);
               if (!node) {
                 skipped++;

@@ -19,12 +19,13 @@ export interface Occurrence {
   pageName: string;
   category: HardcodedCategory;
   kind: HardcodedKind;
-  field: string;          // figma field to bind: 'fills' | 'strokes' | 'cornerRadius' | 'topLeftRadius' | 'strokeWeight' | 'paddingLeft' | 'itemSpacing' | 'fontSize' | 'lineHeight' | 'letterSpacing' | ...
+  field: string;          // figma field to bind: 'fills' | 'strokes' | 'cornerRadius' | 'topLeftRadius' | 'strokeWeight' | 'paddingLeft' | 'itemSpacing' | 'fontSize' | 'lineHeight' | 'letterSpacing' | 'fills[gradientStop]' | 'strokes[gradientStop]' | 'effects' | ...
   paintIndex?: number;    // for color occurrences: index in fills/strokes
   valueKey: string;       // grouping key, e.g. 'color:#FFFFFF@1' or 'radius:8'
   colorHex?: string;      // '#RRGGBB' for color
   opacity?: number;       // 0..1 for color
   num?: number;           // numeric value for non-color kinds
+  replaceable?: boolean;  // default true (solid fill/stroke); false for gradient-stop and shadow-effect colors — navigate-only in v1
 }
 
 export interface HardcodedGroup {

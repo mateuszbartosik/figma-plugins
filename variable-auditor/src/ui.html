@@ -111,6 +111,7 @@
 
   .tag{font-size:9.5px; font-weight:600; letter-spacing:.03em; text-transform:uppercase; padding:2px 7px; border-radius:6px;}
   .tag.rose{color:var(--rose-ink); background:rgba(240,57,107,.1);}
+  .tag.hint{color:var(--text-3); background:var(--surface-2); border:1px solid var(--border); cursor:default;}
 
   .caveat{display:flex; gap:8px; margin:2px 8px 8px; padding:9px 11px; border-radius:11px;
     background:rgba(124,92,255,.07); border:1px solid rgba(124,92,255,.16);}
@@ -565,14 +566,23 @@
       var left = g.colorHex ? '<div class="swatch" style="background:' + g.colorHex + '"></div>'
                             : '<div class="tglyph">' + esc(formatGlyph(g)) + '</div>';
       var rowMeta = g.category === 'color' ? 'Color · ' + g.count + ' layers' : g.count + ' layers';
+      // A group is replaceable if ANY occurrence in it is (gradient-stop and shadow-
+      // effect colors are navigate-only; a group only loses Replace when every
+      // occurrence in it is one of those).
+      var replaceable = g.occurrences.some(function (o) { return o.replaceable !== false; });
+      var act = replaceable
+        ? '<button class="replace">' + icon('swap') + 'Replace</button>'
+        : '<span class="tag hint" title="Gradient and shadow colors can’t be bound to a variable yet — use Locate to review them.">' + esc(nonReplaceableLabel(g.occurrences)) + '</span>';
       var head = el('div', 'row grow');
       head.innerHTML = left +
         '<div class="rmain"><div class="rname">' + esc(g.label) + '</div><div class="rmeta">' + rowMeta + '</div></div>' +
-        '<div class="ract"><button class="replace">' + icon('swap') + 'Replace</button>' + icon('chevron', 'grow-chev') + '</div>';
-      head.querySelector('.replace').addEventListener('click', function (e) {
-        e.stopPropagation(); state.pendingReplace = { category: g.category, valueKey: g.valueKey, label: g.label };
-        post({ type: 'get-candidates', category: g.category, valueKey: g.valueKey });
-      });
+        '<div class="ract">' + act + icon('chevron', 'grow-chev') + '</div>';
+      if (replaceable) {
+        head.querySelector('.replace').addEventListener('click', function (e) {
+          e.stopPropagation(); state.pendingReplace = { category: g.category, valueKey: g.valueKey, label: g.label };
+          post({ type: 'get-candidates', category: g.category, valueKey: g.valueKey });
+        });
+      }
       grp.appendChild(head);
       var ow = el('div', 'occ-wrap'); var oc = el('div', 'occ'); var oi = el('div', 'occ-inner');
       g.occurrences.forEach(function (o) {
@@ -604,6 +614,15 @@
     })[f] || f;
   }
   function formatGlyph(g) { var n = g.num != null ? String(g.num) : '#'; return n.length <= 3 ? n : '#'; }
+  // Label for a group whose occurrences are all navigate-only (see `replaceable` on Occurrence).
+  function nonReplaceableLabel(occs) {
+    var hasGradient = occs.some(function (o) { return String(o.field).indexOf('gradientStop') !== -1; });
+    var hasEffect = occs.some(function (o) { return o.field === 'effects'; });
+    if (hasGradient && hasEffect) return 'Gradient / shadow';
+    if (hasEffect) return 'Shadow';
+    if (hasGradient) return 'Gradient';
+    return 'Navigate only';
+  }
   function toast(msg) { var t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(function () { t.classList.remove('show'); }, 2600); }
 
   function askConfirm(title, msg, onOk) {

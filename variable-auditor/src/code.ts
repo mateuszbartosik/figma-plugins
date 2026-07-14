@@ -44,15 +44,66 @@ function pushColorOccurrences(
   const paints = (node as any)[key];
   if (!Array.isArray(paints)) return;
   paints.forEach((paint: Paint, i: number) => {
-    if (paint.type !== 'SOLID' || paint.visible === false) return;
-    if ((paint as any).boundVariables?.color) return; // already bound
-    const colorHex = rgbaToHex({ ...paint.color, a: 1 });
-    const opacity = paint.opacity ?? 1;
+    if (paint.visible === false) return;
+    if (paint.type === 'SOLID') {
+      if ((paint as any).boundVariables?.color) return; // already bound
+      const colorHex = rgbaToHex({ ...paint.color, a: 1 });
+      const opacity = paint.opacity ?? 1;
+      const meta = groupMeta('color', colorHex, opacity, null);
+      out.push({
+        nodeId: node.id, nodeName: node.name, pageId: page.id, pageName: page.name,
+        category: meta.category, kind: 'color', field: key, paintIndex: i,
+        valueKey: meta.valueKey, colorHex, opacity,
+      });
+      return;
+    }
+    if (
+      paint.type === 'GRADIENT_LINEAR' || paint.type === 'GRADIENT_RADIAL' ||
+      paint.type === 'GRADIENT_ANGULAR' || paint.type === 'GRADIENT_DIAMOND'
+    ) {
+      pushGradientStopOccurrences(node, page, key, paint, i, out);
+    }
+  });
+}
+
+// Gradient-stop colors are surfaced navigate-only in v1: the replace flow
+// (applyBinding) is built around a single paint slot per occurrence, and rebinding
+// a specific stop within paint.gradientStops needs its own dedicated path — left for
+// a future iteration. `replaceable: false` lets the UI suppress the Replace action.
+function pushGradientStopOccurrences(
+  node: SceneNode, page: PageNode, key: 'fills' | 'strokes', paint: GradientPaint, paintIndex: number, out: Occurrence[],
+) {
+  paint.gradientStops.forEach((stop) => {
+    if (stop.boundVariables?.color) return; // already bound
+    const colorHex = rgbaToHex(stop.color);
+    const opacity = stop.color.a ?? 1;
     const meta = groupMeta('color', colorHex, opacity, null);
     out.push({
       nodeId: node.id, nodeName: node.name, pageId: page.id, pageName: page.name,
-      category: meta.category, kind: 'color', field: key, paintIndex: i,
-      valueKey: meta.valueKey, colorHex, opacity,
+      category: meta.category, kind: 'color', field: `${key}[gradientStop]`, paintIndex,
+      valueKey: meta.valueKey, colorHex, opacity, replaceable: false,
+    });
+  });
+}
+
+// Shadow-effect colors, same navigate-only rationale as gradient stops above:
+// figma.variables.setBoundVariableForEffect exists, but wiring a real replace path
+// (locating the right effect by index, rewriting the readonly effects array) is out
+// of scope for v1 — this only detects and flags them.
+function pushEffectColorOccurrences(node: SceneNode, page: PageNode, out: Occurrence[]) {
+  const effects = (node as any).effects;
+  if (!Array.isArray(effects)) return;
+  effects.forEach((effect: Effect) => {
+    if (effect.type !== 'DROP_SHADOW' && effect.type !== 'INNER_SHADOW') return;
+    if (effect.visible === false) return;
+    if (effect.boundVariables?.color) return; // already bound
+    const colorHex = rgbaToHex(effect.color);
+    const opacity = effect.color.a ?? 1;
+    const meta = groupMeta('color', colorHex, opacity, null);
+    out.push({
+      nodeId: node.id, nodeName: node.name, pageId: page.id, pageName: page.name,
+      category: meta.category, kind: 'color', field: 'effects',
+      valueKey: meta.valueKey, colorHex, opacity, replaceable: false,
     });
   });
 }
@@ -97,6 +148,7 @@ function collectNode(
     if (props.color) {
       if ('fills' in node && (node as any).fills !== figma.mixed) pushColorOccurrences(node, page, 'fills', occ);
       if ('strokes' in node && Array.isArray((node as any).strokes)) pushColorOccurrences(node, page, 'strokes', occ);
+      if ('effects' in node) pushEffectColorOccurrences(node, page, occ);
     }
 
     // Corner radius (uniform primary; per-corner when mixed)
@@ -396,6 +448,12 @@ figma.ui.onmessage = async (msg: UIToPlugin) => {
       const occ = (lastScan?.occurrencesAll ?? []).filter(o => o.valueKey === msg.valueKey);
       let replaced = 0, skipped = 0;
       for (const o of occ) {
+        // Gradient-stop / shadow-effect colors are navigate-only in v1 (see
+        // pushGradientStopOccurrences / pushEffectColorOccurrences) — the UI hides
+        // Replace when a whole group is non-replaceable, but a group can be a mix
+        // (same hex/opacity from a solid fill AND a gradient stop elsewhere), so
+        // guard here too rather than let applyBinding fail on a field it can't handle.
+        if (o.replaceable === false) { skipped++; continue; }
         const node = await figma.getNodeByIdAsync(o.nodeId);
         if (!node) { skipped++; continue; }
         try { await applyBinding(node as SceneNode, o, variable); replaced++; }
