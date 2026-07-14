@@ -401,6 +401,20 @@ figma.ui.onmessage = async (msg: UIToPlugin) => {
       }
       figma.currentPage.selection = [node as SceneNode];
       figma.viewport.scrollAndZoomIntoView([node as SceneNode]);
+    } else if (msg.type === 'detach') {
+      const node = await figma.getNodeByIdAsync(msg.nodeId);
+      if (!node) { figma.ui.postMessage({ type: 'error', message: 'That layer no longer exists — rescan.' }); return; }
+      try {
+        (node as any).setBoundVariable(msg.field, null);
+      } catch (e) {
+        figma.ui.postMessage({ type: 'error', message: String((e as Error)?.message ?? e) });
+        return;
+      }
+      if (lastScan) {
+        lastScan.brokenAll = lastScan.brokenAll.filter(b => !(b.nodeId === msg.nodeId && b.field === msg.field));
+      }
+      figma.notify('Detached binding');
+      figma.ui.postMessage({ type: 'scan-result', result: filterByScope(lastScope) });
     } else if (msg.type === 'delete-variables') {
       const removed: string[] = [];
       for (const id of msg.ids) {

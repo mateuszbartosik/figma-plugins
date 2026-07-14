@@ -512,8 +512,12 @@
       row.innerHTML =
         '<div class="tglyph" style="color:var(--rose)">' + icon('unlink') + '</div>' +
         '<div class="rmain"><div class="rname">' + esc(b.nodeName) + '</div><div class="rmeta">' + esc(fieldLabel(b.field)) + ' <span class="tag rose">missing</span></div></div>' +
-        '<div class="ract"><span class="opage">' + esc(b.pageName) + '</span><button class="mini" aria-label="Locate on canvas">' + icon('locate') + '</button></div>';
-      row.querySelector('.mini').addEventListener('click', function () { markCurrent(row); post({ type: 'navigate', nodeId: b.nodeId, pageId: b.pageId }); });
+        '<div class="ract"><span class="opage">' + esc(b.pageName) + '</span>' +
+        '<button class="mini" aria-label="Detach binding" title="Detach binding">' + icon('unlink') + '</button>' +
+        '<button class="mini" aria-label="Locate on canvas">' + icon('locate') + '</button></div>';
+      var actBtns = row.querySelectorAll('.mini');
+      actBtns[0].addEventListener('click', function () { post({ type: 'detach', nodeId: b.nodeId, field: b.field }); });
+      actBtns[1].addEventListener('click', function () { markCurrent(row); post({ type: 'navigate', nodeId: b.nodeId, pageId: b.pageId }); });
       inner.appendChild(row);
     });
     sb.appendChild(inner); body.appendChild(sb); card.appendChild(body);
