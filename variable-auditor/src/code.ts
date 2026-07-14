@@ -404,14 +404,56 @@ figma.ui.onmessage = async (msg: UIToPlugin) => {
     } else if (msg.type === 'detach') {
       const node = await figma.getNodeByIdAsync(msg.nodeId);
       if (!node) { figma.ui.postMessage({ type: 'error', message: 'That layer no longer exists — rescan.' }); return; }
+      const field = msg.field;
+      // Only a bound variable that no longer resolves counts as "broken" — this guards
+      // against clearing a healthy binding that merely shares the field name.
+      const isBroken = async (a: any) => !!a && typeof a.id === 'string' && (await figma.variables.getVariableByIdAsync(a.id)) === null;
+      let changed = false;
       try {
-        (node as any).setBoundVariable(msg.field, null);
+        if (field === 'fills' || field === 'strokes') {
+          // fills/strokes are array-valued — setBoundVariable() (scalar-only) can't touch
+          // them; each broken solid paint must be cleared via setBoundVariableForPaint and
+          // the array reassigned, mirroring applyBinding's clone-and-reassign pattern.
+          const paints = ((node as any)[field] as Paint[]).slice();
+          for (let i = 0; i < paints.length; i++) {
+            const p = paints[i];
+            if (p.type === 'SOLID' && await isBroken((p as any).boundVariables?.color)) {
+              paints[i] = figma.variables.setBoundVariableForPaint(p as SolidPaint, 'color', null);
+              changed = true;
+            }
+          }
+          if (changed) (node as any)[field] = paints;
+        } else if (field === 'effects') {
+          // Same rationale as fills/strokes: effects are array-valued, cleared per-effect
+          // via setBoundVariableForEffect.
+          const effects = ((node as any).effects as Effect[]).slice();
+          for (let i = 0; i < effects.length; i++) {
+            const e = effects[i];
+            if (await isBroken((e as any).boundVariables?.color)) {
+              effects[i] = figma.variables.setBoundVariableForEffect(e, 'color', null);
+              changed = true;
+            }
+          }
+          if (changed) (node as any).effects = effects;
+        } else {
+          // Scalar bindable field (cornerRadius, strokeWeight, padding*, itemSpacing,
+          // fontSize, lineHeight, letterSpacing, opacity, visible, …) — setBoundVariable
+          // handles these directly.
+          (node as any).setBoundVariable(field, null);
+          changed = true;
+        }
       } catch (e) {
-        figma.ui.postMessage({ type: 'error', message: String((e as Error)?.message ?? e) });
+        figma.ui.postMessage({ type: 'error', message: 'Could not detach: ' + msg });
+        return;
+      }
+      if (!changed) {
+        // Nothing was actually cleared (e.g. an unsupported/gradient-stop binding) —
+        // don't remove rows from the scan cache and falsely report success.
+        figma.ui.postMessage({ type: 'error', message: 'Nothing to detach on that layer.' });
         return;
       }
       if (lastScan) {
-        lastScan.brokenAll = lastScan.brokenAll.filter(b => !(b.nodeId === msg.nodeId && b.field === msg.field));
+        lastScan.brokenAll = lastScan.brokenAll.filter(b => !(b.nodeId === msg.nodeId && b.field === field));
       }
       figma.notify('Detached binding');
       figma.ui.postMessage({ type: 'scan-result', result: filterByScope(lastScope) });

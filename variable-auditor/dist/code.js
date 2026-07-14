@@ -572,7 +572,7 @@
         });
       }
       figma.ui.onmessage = (msg) => __async(exports, null, function* () {
-        var _a, _b, _c, _d, _e, _f;
+        var _a, _b, _c, _d, _e, _f, _g;
         try {
           if (msg.type === "scan") {
             lastScope = msg.scope;
@@ -613,14 +613,48 @@
               figma.ui.postMessage({ type: "error", message: "That layer no longer exists \u2014 rescan." });
               return;
             }
+            const field = msg.field;
+            const isBroken = (a) => __async(exports, null, function* () {
+              return !!a && typeof a.id === "string" && (yield figma.variables.getVariableByIdAsync(a.id)) === null;
+            });
+            let changed = false;
             try {
-              node.setBoundVariable(msg.field, null);
+              if (field === "fills" || field === "strokes") {
+                const paints = node[field].slice();
+                for (let i = 0; i < paints.length; i++) {
+                  const p = paints[i];
+                  if (p.type === "SOLID" && (yield isBroken((_a = p.boundVariables) == null ? void 0 : _a.color))) {
+                    paints[i] = figma.variables.setBoundVariableForPaint(p, "color", null);
+                    changed = true;
+                  }
+                }
+                if (changed)
+                  node[field] = paints;
+              } else if (field === "effects") {
+                const effects = node.effects.slice();
+                for (let i = 0; i < effects.length; i++) {
+                  const e = effects[i];
+                  if (yield isBroken((_b = e.boundVariables) == null ? void 0 : _b.color)) {
+                    effects[i] = figma.variables.setBoundVariableForEffect(e, "color", null);
+                    changed = true;
+                  }
+                }
+                if (changed)
+                  node.effects = effects;
+              } else {
+                node.setBoundVariable(field, null);
+                changed = true;
+              }
             } catch (e) {
-              figma.ui.postMessage({ type: "error", message: String((_a = e == null ? void 0 : e.message) != null ? _a : e) });
+              figma.ui.postMessage({ type: "error", message: "Could not detach: " + msg });
+              return;
+            }
+            if (!changed) {
+              figma.ui.postMessage({ type: "error", message: "Nothing to detach on that layer." });
               return;
             }
             if (lastScan) {
-              lastScan.brokenAll = lastScan.brokenAll.filter((b) => !(b.nodeId === msg.nodeId && b.field === msg.field));
+              lastScan.brokenAll = lastScan.brokenAll.filter((b) => !(b.nodeId === msg.nodeId && b.field === field));
             }
             figma.notify("Detached binding");
             figma.ui.postMessage({ type: "scan-result", result: filterByScope(lastScope) });
@@ -672,7 +706,7 @@
               };
             });
             const group = lastScan == null ? void 0 : lastScan.occurrencesAll.find((o) => o.valueKey === msg.valueKey);
-            const target = wantColor ? { kind: "color", colorHex: (_b = group == null ? void 0 : group.colorHex) != null ? _b : "", opacity: (_c = group == null ? void 0 : group.opacity) != null ? _c : 1 } : { kind: "number", num: (_d = group == null ? void 0 : group.num) != null ? _d : 0 };
+            const target = wantColor ? { kind: "color", colorHex: (_c = group == null ? void 0 : group.colorHex) != null ? _c : "", opacity: (_d = group == null ? void 0 : group.opacity) != null ? _d : 1 } : { kind: "number", num: (_e = group == null ? void 0 : group.num) != null ? _e : 0 };
             figma.ui.postMessage({
               type: "candidates",
               category: msg.category,
@@ -685,7 +719,7 @@
               figma.ui.postMessage({ type: "error", message: "That variable no longer exists \u2014 rescan." });
               return;
             }
-            const occ = ((_e = lastScan == null ? void 0 : lastScan.occurrencesAll) != null ? _e : []).filter((o) => o.valueKey === msg.valueKey);
+            const occ = ((_f = lastScan == null ? void 0 : lastScan.occurrencesAll) != null ? _f : []).filter((o) => o.valueKey === msg.valueKey);
             let replaced = 0, skipped = 0;
             for (const o of occ) {
               if (o.replaceable === false) {
@@ -720,7 +754,7 @@
             figma.ui.postMessage({ type: "scan-result", result: filterByScope(lastScope) });
           }
         } catch (e) {
-          figma.ui.postMessage({ type: "error", message: String((_f = e == null ? void 0 : e.message) != null ? _f : e) });
+          figma.ui.postMessage({ type: "error", message: String((_g = e == null ? void 0 : e.message) != null ? _g : e) });
         }
       });
     }
