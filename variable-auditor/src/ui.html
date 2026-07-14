@@ -367,6 +367,8 @@
     var entry = navList[navIndex];
     markCurrent(entry.row);
     post({ type: 'navigate', nodeId: entry.nodeId, pageId: entry.pageId });
+    var card = entry.row.closest('[data-card]'); if (card) card.classList.remove('collapsed');
+    var grp = entry.row.closest('.grp'); if (grp) grp.classList.add('open');
     entry.row.scrollIntoView({ block: 'nearest' });
     updateStepperUI();
   }
