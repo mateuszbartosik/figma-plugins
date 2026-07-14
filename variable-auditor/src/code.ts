@@ -443,7 +443,7 @@ figma.ui.onmessage = async (msg: UIToPlugin) => {
           changed = true;
         }
       } catch (e) {
-        figma.ui.postMessage({ type: 'error', message: 'Could not detach: ' + msg });
+        figma.ui.postMessage({ type: 'error', message: 'Could not detach: ' + String((e as Error)?.message ?? e) });
         return;
       }
       if (!changed) {

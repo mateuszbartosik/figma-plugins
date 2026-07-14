@@ -572,7 +572,7 @@
         });
       }
       figma.ui.onmessage = (msg) => __async(exports, null, function* () {
-        var _a, _b, _c, _d, _e, _f, _g;
+        var _a, _b, _c, _d, _e, _f, _g, _h;
         try {
           if (msg.type === "scan") {
             lastScope = msg.scope;
@@ -646,7 +646,7 @@
                 changed = true;
               }
             } catch (e) {
-              figma.ui.postMessage({ type: "error", message: "Could not detach: " + msg });
+              figma.ui.postMessage({ type: "error", message: "Could not detach: " + String((_c = e == null ? void 0 : e.message) != null ? _c : e) });
               return;
             }
             if (!changed) {
@@ -706,7 +706,7 @@
               };
             });
             const group = lastScan == null ? void 0 : lastScan.occurrencesAll.find((o) => o.valueKey === msg.valueKey);
-            const target = wantColor ? { kind: "color", colorHex: (_c = group == null ? void 0 : group.colorHex) != null ? _c : "", opacity: (_d = group == null ? void 0 : group.opacity) != null ? _d : 1 } : { kind: "number", num: (_e = group == null ? void 0 : group.num) != null ? _e : 0 };
+            const target = wantColor ? { kind: "color", colorHex: (_d = group == null ? void 0 : group.colorHex) != null ? _d : "", opacity: (_e = group == null ? void 0 : group.opacity) != null ? _e : 1 } : { kind: "number", num: (_f = group == null ? void 0 : group.num) != null ? _f : 0 };
             figma.ui.postMessage({
               type: "candidates",
               category: msg.category,
@@ -719,7 +719,7 @@
               figma.ui.postMessage({ type: "error", message: "That variable no longer exists \u2014 rescan." });
               return;
             }
-            const occ = ((_f = lastScan == null ? void 0 : lastScan.occurrencesAll) != null ? _f : []).filter((o) => o.valueKey === msg.valueKey);
+            const occ = ((_g = lastScan == null ? void 0 : lastScan.occurrencesAll) != null ? _g : []).filter((o) => o.valueKey === msg.valueKey);
             let replaced = 0, skipped = 0;
             for (const o of occ) {
               if (o.replaceable === false) {
@@ -754,7 +754,7 @@
             figma.ui.postMessage({ type: "scan-result", result: filterByScope(lastScope) });
           }
         } catch (e) {
-          figma.ui.postMessage({ type: "error", message: String((_g = e == null ? void 0 : e.message) != null ? _g : e) });
+          figma.ui.postMessage({ type: "error", message: String((_h = e == null ? void 0 : e.message) != null ? _h : e) });
         }
       });
     }
