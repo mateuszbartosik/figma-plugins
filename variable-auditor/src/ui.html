@@ -564,7 +564,7 @@
       var grp = el('div', 'grp');
       var left = g.colorHex ? '<div class="swatch" style="background:' + g.colorHex + '"></div>'
                             : '<div class="tglyph">' + esc(formatGlyph(g)) + '</div>';
-      var rowMeta = g.category === 'color' ? 'Fill color · ' + g.count + ' layers' : g.count + ' layers';
+      var rowMeta = g.category === 'color' ? 'Color · ' + g.count + ' layers' : g.count + ' layers';
       var head = el('div', 'row grow');
       head.innerHTML = left +
         '<div class="rmain"><div class="rname">' + esc(g.label) + '</div><div class="rmeta">' + rowMeta + '</div></div>' +
