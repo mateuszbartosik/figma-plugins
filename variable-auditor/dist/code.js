@@ -850,6 +850,7 @@
             const variable = imported;
             const occ = ((_j = lastScan == null ? void 0 : lastScan.occurrencesAll) != null ? _j : []).filter((o) => o.valueKey === msg.valueKey);
             let replaced = 0, skipped = 0;
+            const bound = [];
             for (const o of occ) {
               if (o.replaceable === false) {
                 skipped++;
@@ -863,12 +864,13 @@
               try {
                 yield applyBinding(node, o, variable);
                 replaced++;
+                bound.push(o);
               } catch (e) {
                 skipped++;
               }
             }
             if (lastScan) {
-              lastScan.occurrencesAll = lastScan.occurrencesAll.filter((o) => !(o.valueKey === msg.valueKey && o.replaceable !== false));
+              lastScan.occurrencesAll = lastScan.occurrencesAll.filter((o) => bound.indexOf(o) === -1);
               if (replaced > 0)
                 lastScan.unused = lastScan.unused.filter((u) => u.id !== variable.id);
             }

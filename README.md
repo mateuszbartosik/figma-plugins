@@ -32,7 +32,7 @@ For each result, you can:
 - **Select all** matching instances on canvas at once
 - **Replace** hardcoded values with matching variables (exact matches suggested first; library variable candidates ranked by proximity)
 - **Delete** unused variables with one-click confirmation or bulk delete
-- **Detach** broken references with one-click per item or bulk
+- **Detach** broken references (one click per item)
 
 See [THIRD-PARTY-NOTICES.md](./THIRD-PARTY-NOTICES.md) for third-party assets embedded in the plugin UI.
 

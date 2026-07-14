@@ -599,6 +599,7 @@ figma.ui.onmessage = async (msg: UIToPlugin) => {
       const variable = imported; // narrow to non-null once, reused below
       const occ = (lastScan?.occurrencesAll ?? []).filter(o => o.valueKey === msg.valueKey);
       let replaced = 0, skipped = 0;
+      const bound: Occurrence[] = []; // occurrences that were actually bound successfully this pass
       for (const o of occ) {
         // Gradient-stop / shadow-effect colors are navigate-only in v1 (see
         // pushGradientStopOccurrences / pushEffectColorOccurrences) — the UI hides
@@ -608,12 +609,16 @@ figma.ui.onmessage = async (msg: UIToPlugin) => {
         if (o.replaceable === false) { skipped++; continue; }
         const node = await figma.getNodeByIdAsync(o.nodeId);
         if (!node) { skipped++; continue; }
-        try { await applyBinding(node as SceneNode, o, variable); replaced++; }
+        try { await applyBinding(node as SceneNode, o, variable); replaced++; bound.push(o); }
         catch { skipped++; }
       }
       if (lastScan) {
-        // drop replaced occurrences from cache so a re-filter reflects reality
-        lastScan.occurrencesAll = lastScan.occurrencesAll.filter(o => !(o.valueKey === msg.valueKey && o.replaceable !== false));
+        // Drop only the occurrences that were actually bound this pass — skipped ones
+        // (node gone, or applyBinding threw) are still hardcoded on canvas and must stay
+        // in the cache, otherwise summary.hardcoded can undercount (even hit 0) and the
+        // UI falsely reports "all clear". Reference identity is safe here: `bound` holds
+        // the exact object instances drawn from lastScan.occurrencesAll via `occ` above.
+        lastScan.occurrencesAll = lastScan.occurrencesAll.filter(o => bound.indexOf(o) === -1);
         // at least one binding actually landed — the target variable is no longer unused
         if (replaced > 0) lastScan.unused = lastScan.unused.filter(u => u.id !== variable.id);
       }
