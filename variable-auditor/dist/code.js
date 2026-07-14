@@ -583,7 +583,7 @@
             });
             unused = computeUnused(infos, usedIds);
           }
-          return { unused, brokenAll, occurrencesAll, unlinkedRefsAll };
+          return { unused, brokenAll, occurrencesAll, unlinkedRefsAll, teamLibraryOk: checks.unlinked ? teamLibOk : void 0 };
         });
       }
       function filterByScope(scope) {
@@ -603,7 +603,8 @@
           unused: lastScan.unused,
           broken,
           hardcoded,
-          unlinked
+          unlinked,
+          teamLibraryOk: lastScan.teamLibraryOk
         };
       }
       function applyBinding(node, o, variable) {
@@ -675,6 +676,7 @@
           } else if (msg.type === "navigate") {
             const node = yield figma.getNodeByIdAsync(msg.nodeId);
             if (!node) {
+              figma.notify("That layer no longer exists \u2014 rescan.");
               figma.ui.postMessage({ type: "error", message: "That layer no longer exists \u2014 rescan." });
               return;
             }
@@ -725,6 +727,7 @@
           } else if (msg.type === "detach") {
             const node = yield figma.getNodeByIdAsync(msg.nodeId);
             if (!node) {
+              figma.notify("That layer no longer exists \u2014 rescan.");
               figma.ui.postMessage({ type: "error", message: "That layer no longer exists \u2014 rescan." });
               return;
             }
@@ -789,10 +792,12 @@
               const removedSet = new Set(removed);
               lastScan.unused = lastScan.unused.filter((u) => !removedSet.has(u.id));
             }
+            const deleteMessage = `Deleted ${removed.length} variable${removed.length === 1 ? "" : "s"}.`;
+            figma.notify(deleteMessage);
             figma.ui.postMessage({
               type: "action-result",
               ok: true,
-              message: `Deleted ${removed.length} variable${removed.length === 1 ? "" : "s"}.`,
+              message: deleteMessage,
               removedVariableIds: removed
             });
             figma.ui.postMessage({ type: "scan-result", result: filterByScope(lastScope) });
@@ -838,6 +843,7 @@
               imported = yield figma.variables.getVariableByIdAsync(msg.variableId);
             }
             if (!imported) {
+              figma.notify("That variable no longer exists \u2014 rescan.");
               figma.ui.postMessage({ type: "error", message: "That variable no longer exists \u2014 rescan." });
               return;
             }
@@ -867,10 +873,12 @@
                 lastScan.unused = lastScan.unused.filter((u) => u.id !== variable.id);
             }
             const prefix = msg.libraryKey ? "Imported & replaced" : "Replaced";
+            const replaceMessage = `${prefix} ${replaced}${skipped ? `, skipped ${skipped}` : ""}.`;
+            figma.notify(replaceMessage);
             figma.ui.postMessage({
               type: "action-result",
               ok: true,
-              message: `${prefix} ${replaced}${skipped ? `, skipped ${skipped}` : ""}.`,
+              message: replaceMessage,
               replacedValueKey: msg.valueKey,
               replacedCount: replaced,
               skippedCount: skipped

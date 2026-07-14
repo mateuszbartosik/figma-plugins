@@ -27,6 +27,9 @@ interface FullScan {
   brokenAll: BrokenReference[];
   occurrencesAll: Occurrence[];
   unlinkedRefsAll: UnlinkedRef[];
+  // Whether the attached-library fetch succeeded, only meaningful when checks.unlinked
+  // was on for this scan — undefined when the check was off (not attempted).
+  teamLibraryOk?: boolean;
 }
 let lastScan: FullScan | null = null;
 // Attached-library collection keys, cached for the plugin session. Reset (set to null)
@@ -331,7 +334,10 @@ async function fullScan(): Promise<FullScan> {
     unused = computeUnused(infos, usedIds);
   }
 
-  return { unused, brokenAll, occurrencesAll, unlinkedRefsAll };
+  // Only surface teamLibOk when the unlinked check actually ran — otherwise it's
+  // not applicable, and undefined lets the UI treat it as "nothing to report" rather
+  // than "the fetch failed" (see ScanResult.teamLibraryOk).
+  return { unused, brokenAll, occurrencesAll, unlinkedRefsAll, teamLibraryOk: checks.unlinked ? teamLibOk : undefined };
 }
 
 function filterByScope(scope: Scope): ScanResult {
@@ -351,6 +357,7 @@ function filterByScope(scope: Scope): ScanResult {
     scope,
     summary: { unused: lastScan.unused.length, broken: broken.length, hardcoded: occ.length, unlinked: unlinkedRefs.length },
     unused: lastScan.unused, broken, hardcoded, unlinked,
+    teamLibraryOk: lastScan.teamLibraryOk,
   };
 }
 
@@ -418,7 +425,11 @@ figma.ui.onmessage = async (msg: UIToPlugin) => {
       }
     } else if (msg.type === 'navigate') {
       const node = await figma.getNodeByIdAsync(msg.nodeId);
-      if (!node) { figma.ui.postMessage({ type: 'error', message: 'That layer no longer exists — rescan.' }); return; }
+      if (!node) {
+        figma.notify('That layer no longer exists — rescan.');
+        figma.ui.postMessage({ type: 'error', message: 'That layer no longer exists — rescan.' });
+        return;
+      }
       const page = await figma.getNodeByIdAsync(msg.pageId);
       if (page && page.type === 'PAGE' && figma.currentPage.id !== page.id) {
         await figma.setCurrentPageAsync(page);
@@ -464,7 +475,11 @@ figma.ui.onmessage = async (msg: UIToPlugin) => {
       figma.notify(message);
     } else if (msg.type === 'detach') {
       const node = await figma.getNodeByIdAsync(msg.nodeId);
-      if (!node) { figma.ui.postMessage({ type: 'error', message: 'That layer no longer exists — rescan.' }); return; }
+      if (!node) {
+        figma.notify('That layer no longer exists — rescan.');
+        figma.ui.postMessage({ type: 'error', message: 'That layer no longer exists — rescan.' });
+        return;
+      }
       const field = msg.field;
       // Only a bound variable that no longer resolves counts as "broken" — this guards
       // against clearing a healthy binding that merely shares the field name.
@@ -528,9 +543,11 @@ figma.ui.onmessage = async (msg: UIToPlugin) => {
         const removedSet = new Set(removed);
         lastScan.unused = lastScan.unused.filter(u => !removedSet.has(u.id));
       }
+      const deleteMessage = `Deleted ${removed.length} variable${removed.length === 1 ? '' : 's'}.`;
+      figma.notify(deleteMessage);
       figma.ui.postMessage({
         type: 'action-result', ok: true,
-        message: `Deleted ${removed.length} variable${removed.length === 1 ? '' : 's'}.`,
+        message: deleteMessage,
         removedVariableIds: removed,
       });
       // update in place from the cached scan rather than a full rescan
@@ -574,7 +591,11 @@ figma.ui.onmessage = async (msg: UIToPlugin) => {
       } else if (msg.variableId) {
         imported = await figma.variables.getVariableByIdAsync(msg.variableId);
       }
-      if (!imported) { figma.ui.postMessage({ type: 'error', message: 'That variable no longer exists — rescan.' }); return; }
+      if (!imported) {
+        figma.notify('That variable no longer exists — rescan.');
+        figma.ui.postMessage({ type: 'error', message: 'That variable no longer exists — rescan.' });
+        return;
+      }
       const variable = imported; // narrow to non-null once, reused below
       const occ = (lastScan?.occurrencesAll ?? []).filter(o => o.valueKey === msg.valueKey);
       let replaced = 0, skipped = 0;
@@ -597,8 +618,10 @@ figma.ui.onmessage = async (msg: UIToPlugin) => {
         if (replaced > 0) lastScan.unused = lastScan.unused.filter(u => u.id !== variable.id);
       }
       const prefix = msg.libraryKey ? 'Imported & replaced' : 'Replaced';
+      const replaceMessage = `${prefix} ${replaced}${skipped ? `, skipped ${skipped}` : ''}.`;
+      figma.notify(replaceMessage);
       figma.ui.postMessage({ type: 'action-result', ok: true,
-        message: `${prefix} ${replaced}${skipped ? `, skipped ${skipped}` : ''}.`,
+        message: replaceMessage,
         replacedValueKey: msg.valueKey, replacedCount: replaced, skippedCount: skipped });
       // update in place from the cached scan rather than a full rescan
       figma.ui.postMessage({ type: 'scan-result', result: filterByScope(lastScope) });

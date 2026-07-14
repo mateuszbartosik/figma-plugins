@@ -85,6 +85,11 @@ export interface ScanResult {
   broken: BrokenReference[];
   hardcoded: HardcodedGroup[];
   unlinked: UnlinkedGroup[];
+  // Whether the attached-library fetch succeeded this scan. Only meaningful when the
+  // unlinked check is on; undefined/true means "no known problem" (check was off, or
+  // it succeeded) — false means the fetch failed and `unlinked` can't be trusted as
+  // exhaustive (the UI should say so rather than imply zero unlinked variables).
+  teamLibraryOk?: boolean;
 }
 
 export interface CandidateVariable {
