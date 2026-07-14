@@ -29,6 +29,10 @@ interface FullScan {
   unlinkedRefsAll: UnlinkedRef[];
 }
 let lastScan: FullScan | null = null;
+// Attached-library collection keys, cached for the plugin session. Reset (set to null)
+// only on an explicit user rescan (`scan` message) so set-scope/set-checks/action-driven
+// updates reuse it instead of re-hitting figma.teamLibrary on every recompute.
+let attachedKeysCache: Set<string> | null = null;
 
 function isAliasValue(v: unknown): v is { type: 'VARIABLE_ALIAS'; id: string } {
   return typeof v === 'object' && v !== null && (v as any).type === 'VARIABLE_ALIAS';
@@ -184,17 +188,26 @@ async function fullScan(): Promise<FullScan> {
   }
 
   // Attached-library collection keys, needed for unlinked-variable detection.
-  // Fetched once, defensively: if teamLibrary is unavailable (older Figma, or the
-  // request fails), unlinked detection is skipped entirely rather than flagging
-  // everything as unlinked.
+  // Cached per session (attachedKeysCache) since it rarely changes and the async
+  // teamLibrary call is comparatively slow — reused across set-scope/set-checks
+  // recomputes, only refetched when the cache has been explicitly reset (see the
+  // 'scan' message handler below). Defensive either way: if teamLibrary is
+  // unavailable (older Figma, or the request fails), unlinked detection is
+  // skipped entirely rather than flagging everything as unlinked.
   let attachedKeys = new Set<string>();
   let teamLibOk = false;
   if (checks.unlinked) {
-    try {
-      const avail = await figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync();
-      attachedKeys = new Set(avail.map(c => c.key));
+    if (attachedKeysCache !== null) {
+      attachedKeys = attachedKeysCache;
       teamLibOk = true;
-    } catch (e) { teamLibOk = false; }
+    } else {
+      try {
+        const avail = await figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync();
+        attachedKeys = new Set(avail.map(c => c.key));
+        attachedKeysCache = attachedKeys;
+        teamLibOk = true;
+      } catch (e) { teamLibOk = false; }
+    }
   }
 
   const refs: { id: string; ref: BrokenReference }[] = [];
@@ -309,6 +322,7 @@ figma.ui.onmessage = async (msg: UIToPlugin) => {
   try {
     if (msg.type === 'scan') {
       lastScope = msg.scope;
+      attachedKeysCache = null; // explicit rescan: re-read attached libraries, don't trust the cache
       lastScan = await fullScan();
       figma.ui.postMessage({ type: 'scan-result', result: filterByScope(msg.scope) });
     } else if (msg.type === 'set-scope') {
@@ -341,11 +355,17 @@ figma.ui.onmessage = async (msg: UIToPlugin) => {
         const v = await figma.variables.getVariableByIdAsync(id);
         if (v) { try { v.remove(); removed.push(id); } catch { /* in use / locked */ } }
       }
+      if (lastScan && removed.length) {
+        const removedSet = new Set(removed);
+        lastScan.unused = lastScan.unused.filter(u => !removedSet.has(u.id));
+      }
       figma.ui.postMessage({
         type: 'action-result', ok: true,
         message: `Deleted ${removed.length} variable${removed.length === 1 ? '' : 's'}.`,
         removedVariableIds: removed,
       });
+      // update in place from the cached scan rather than a full rescan
+      figma.ui.postMessage({ type: 'scan-result', result: filterByScope(lastScope) });
     }
     else if (msg.type === 'get-candidates') {
       const wantColor = msg.category === 'color';
@@ -381,11 +401,17 @@ figma.ui.onmessage = async (msg: UIToPlugin) => {
         try { await applyBinding(node as SceneNode, o, variable); replaced++; }
         catch { skipped++; }
       }
-      // drop replaced occurrences from cache so a re-filter reflects reality
-      if (lastScan) lastScan.occurrencesAll = lastScan.occurrencesAll.filter(o => o.valueKey !== msg.valueKey);
+      if (lastScan) {
+        // drop replaced occurrences from cache so a re-filter reflects reality
+        lastScan.occurrencesAll = lastScan.occurrencesAll.filter(o => o.valueKey !== msg.valueKey);
+        // at least one binding actually landed — the target variable is no longer unused
+        if (replaced > 0) lastScan.unused = lastScan.unused.filter(u => u.id !== variable.id);
+      }
       figma.ui.postMessage({ type: 'action-result', ok: true,
         message: `Replaced ${replaced}${skipped ? `, skipped ${skipped}` : ''}.`,
         replacedValueKey: msg.valueKey, replacedCount: replaced, skippedCount: skipped });
+      // update in place from the cached scan rather than a full rescan
+      figma.ui.postMessage({ type: 'scan-result', result: filterByScope(lastScope) });
     }
   } catch (e) {
     figma.ui.postMessage({ type: 'error', message: String((e as Error)?.message ?? e) });

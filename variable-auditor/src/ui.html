@@ -386,8 +386,9 @@
   window.onmessage = function (ev) {
     var m = ev.data.pluginMessage; if (!m) return;
     if (m.type === 'scan-result') { setBusy(false); setScanned(true); state.result = m.result; render(m.result); }
+    else if (m.type === 'scan-progress') { setBusy(true); var fs = document.getElementById('foot-status'); if (fs) fs.textContent = 'Scanning… ' + m.scanned; }
     else if (m.type === 'candidates') showPicker(m);
-    else if (m.type === 'action-result') { if (m.message) toast(m.message); if (m.removedVariableIds || m.replacedValueKey) rescan(); }
+    else if (m.type === 'action-result') { if (m.message) toast(m.message); }
     else if (m.type === 'error') { setBusy(false); toast(m.message); }
     else if (m.type === 'settings') {
       state.checks = m.checks;

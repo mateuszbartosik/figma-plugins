@@ -215,6 +215,7 @@
         figma.ui.postMessage({ type: "settings", checks, props });
       }))();
       var lastScan = null;
+      var attachedKeysCache = null;
       function isAliasValue(v) {
         return typeof v === "object" && v !== null && v.type === "VARIABLE_ALIAS";
       }
@@ -372,12 +373,18 @@
           let attachedKeys = /* @__PURE__ */ new Set();
           let teamLibOk = false;
           if (checks.unlinked) {
-            try {
-              const avail = yield figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync();
-              attachedKeys = new Set(avail.map((c) => c.key));
+            if (attachedKeysCache !== null) {
+              attachedKeys = attachedKeysCache;
               teamLibOk = true;
-            } catch (e) {
-              teamLibOk = false;
+            } else {
+              try {
+                const avail = yield figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync();
+                attachedKeys = new Set(avail.map((c) => c.key));
+                attachedKeysCache = attachedKeys;
+                teamLibOk = true;
+              } catch (e) {
+                teamLibOk = false;
+              }
             }
           }
           const refs = [];
@@ -507,6 +514,7 @@
         try {
           if (msg.type === "scan") {
             lastScope = msg.scope;
+            attachedKeysCache = null;
             lastScan = yield fullScan();
             figma.ui.postMessage({ type: "scan-result", result: filterByScope(msg.scope) });
           } else if (msg.type === "set-scope") {
@@ -549,12 +557,17 @@
                 }
               }
             }
+            if (lastScan && removed.length) {
+              const removedSet = new Set(removed);
+              lastScan.unused = lastScan.unused.filter((u) => !removedSet.has(u.id));
+            }
             figma.ui.postMessage({
               type: "action-result",
               ok: true,
               message: `Deleted ${removed.length} variable${removed.length === 1 ? "" : "s"}.`,
               removedVariableIds: removed
             });
+            figma.ui.postMessage({ type: "scan-result", result: filterByScope(lastScope) });
           } else if (msg.type === "get-candidates") {
             const wantColor = msg.category === "color";
             const type = wantColor ? "COLOR" : "FLOAT";
@@ -608,8 +621,11 @@
                 skipped++;
               }
             }
-            if (lastScan)
+            if (lastScan) {
               lastScan.occurrencesAll = lastScan.occurrencesAll.filter((o) => o.valueKey !== msg.valueKey);
+              if (replaced > 0)
+                lastScan.unused = lastScan.unused.filter((u) => u.id !== variable.id);
+            }
             figma.ui.postMessage({
               type: "action-result",
               ok: true,
@@ -618,6 +634,7 @@
               replacedCount: replaced,
               skippedCount: skipped
             });
+            figma.ui.postMessage({ type: "scan-result", result: filterByScope(lastScope) });
           }
         } catch (e) {
           figma.ui.postMessage({ type: "error", message: String((_e = e == null ? void 0 : e.message) != null ? _e : e) });
