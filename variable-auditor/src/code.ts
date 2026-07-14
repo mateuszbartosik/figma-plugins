@@ -425,6 +425,43 @@ figma.ui.onmessage = async (msg: UIToPlugin) => {
       }
       figma.currentPage.selection = [node as SceneNode];
       figma.viewport.scrollAndZoomIntoView([node as SceneNode]);
+    } else if (msg.type === 'select-nodes') {
+      await figma.loadAllPagesAsync();
+      const resolved: SceneNode[] = [];
+      for (const id of msg.nodeIds) {
+        const node = await figma.getNodeByIdAsync(id);
+        if (node) resolved.push(node as SceneNode);
+      }
+      if (!resolved.length) { figma.notify('Those layers no longer exist — rescan.'); return; }
+
+      // Group the resolved nodes by the page they live on (ascend .parent to find
+      // it) — a group's occurrences can span pages, but figma.currentPage.selection
+      // is single-page, so we must pick one page to select on.
+      const byPage = new Map<string, { page: PageNode; nodes: SceneNode[] }>();
+      for (const node of resolved) {
+        let p: BaseNode | null = node;
+        while (p && p.type !== 'PAGE') p = p.parent;
+        if (!p) continue; // no page ancestor — shouldn't happen for a resolved scene node
+        const page = p as PageNode;
+        const bucket = byPage.get(page.id) ?? { page, nodes: [] as SceneNode[] };
+        bucket.nodes.push(node);
+        byPage.set(page.id, bucket);
+      }
+      if (!byPage.size) { figma.notify('Those layers no longer exist — rescan.'); return; }
+
+      // Prefer the current page (so selecting doesn't yank the view away);
+      // otherwise the page holding the most of these nodes.
+      const target = byPage.get(figma.currentPage.id) ??
+        Array.from(byPage.values()).reduce((best, b) => b.nodes.length > best.nodes.length ? b : best);
+
+      if (target.page.id !== figma.currentPage.id) await figma.setCurrentPageAsync(target.page);
+      figma.currentPage.selection = target.nodes;
+      figma.viewport.scrollAndZoomIntoView(target.nodes);
+
+      const otherCount = resolved.length - target.nodes.length;
+      let message = `Selected ${target.nodes.length} layer${target.nodes.length === 1 ? '' : 's'}`;
+      if (otherCount > 0) message += ` (${otherCount} on other pages)`;
+      figma.notify(message);
     } else if (msg.type === 'detach') {
       const node = await figma.getNodeByIdAsync(msg.nodeId);
       if (!node) { figma.ui.postMessage({ type: 'error', message: 'That layer no longer exists — rescan.' }); return; }

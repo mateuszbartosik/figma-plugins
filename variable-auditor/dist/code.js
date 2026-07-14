@@ -649,7 +649,7 @@
         });
       }
       figma.ui.onmessage = (msg) => __async(exports, null, function* () {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _i;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
         try {
           if (msg.type === "scan") {
             lastScope = msg.scope;
@@ -684,6 +684,44 @@
             }
             figma.currentPage.selection = [node];
             figma.viewport.scrollAndZoomIntoView([node]);
+          } else if (msg.type === "select-nodes") {
+            yield figma.loadAllPagesAsync();
+            const resolved = [];
+            for (const id of msg.nodeIds) {
+              const node = yield figma.getNodeByIdAsync(id);
+              if (node)
+                resolved.push(node);
+            }
+            if (!resolved.length) {
+              figma.notify("Those layers no longer exist \u2014 rescan.");
+              return;
+            }
+            const byPage = /* @__PURE__ */ new Map();
+            for (const node of resolved) {
+              let p = node;
+              while (p && p.type !== "PAGE")
+                p = p.parent;
+              if (!p)
+                continue;
+              const page = p;
+              const bucket = (_a = byPage.get(page.id)) != null ? _a : { page, nodes: [] };
+              bucket.nodes.push(node);
+              byPage.set(page.id, bucket);
+            }
+            if (!byPage.size) {
+              figma.notify("Those layers no longer exist \u2014 rescan.");
+              return;
+            }
+            const target = (_b = byPage.get(figma.currentPage.id)) != null ? _b : Array.from(byPage.values()).reduce((best, b) => b.nodes.length > best.nodes.length ? b : best);
+            if (target.page.id !== figma.currentPage.id)
+              yield figma.setCurrentPageAsync(target.page);
+            figma.currentPage.selection = target.nodes;
+            figma.viewport.scrollAndZoomIntoView(target.nodes);
+            const otherCount = resolved.length - target.nodes.length;
+            let message = `Selected ${target.nodes.length} layer${target.nodes.length === 1 ? "" : "s"}`;
+            if (otherCount > 0)
+              message += ` (${otherCount} on other pages)`;
+            figma.notify(message);
           } else if (msg.type === "detach") {
             const node = yield figma.getNodeByIdAsync(msg.nodeId);
             if (!node) {
@@ -700,7 +738,7 @@
                 const paints = node[field].slice();
                 for (let i = 0; i < paints.length; i++) {
                   const p = paints[i];
-                  if (p.type === "SOLID" && (yield isBroken((_a = p.boundVariables) == null ? void 0 : _a.color))) {
+                  if (p.type === "SOLID" && (yield isBroken((_c = p.boundVariables) == null ? void 0 : _c.color))) {
                     paints[i] = figma.variables.setBoundVariableForPaint(p, "color", null);
                     changed = true;
                   }
@@ -711,7 +749,7 @@
                 const effects = node.effects.slice();
                 for (let i = 0; i < effects.length; i++) {
                   const e = effects[i];
-                  if (yield isBroken((_b = e.boundVariables) == null ? void 0 : _b.color)) {
+                  if (yield isBroken((_d = e.boundVariables) == null ? void 0 : _d.color)) {
                     effects[i] = figma.variables.setBoundVariableForEffect(e, "color", null);
                     changed = true;
                   }
@@ -723,7 +761,7 @@
                 changed = true;
               }
             } catch (e) {
-              figma.ui.postMessage({ type: "error", message: "Could not detach: " + String((_c = e == null ? void 0 : e.message) != null ? _c : e) });
+              figma.ui.postMessage({ type: "error", message: "Could not detach: " + String((_e = e == null ? void 0 : e.message) != null ? _e : e) });
               return;
             }
             if (!changed) {
@@ -783,7 +821,7 @@
               };
             });
             const group = lastScan == null ? void 0 : lastScan.occurrencesAll.find((o) => o.valueKey === msg.valueKey);
-            const target = wantColor ? { kind: "color", colorHex: (_d = group == null ? void 0 : group.colorHex) != null ? _d : "", opacity: (_e = group == null ? void 0 : group.opacity) != null ? _e : 1 } : { kind: "number", num: (_f = group == null ? void 0 : group.num) != null ? _f : 0 };
+            const target = wantColor ? { kind: "color", colorHex: (_f = group == null ? void 0 : group.colorHex) != null ? _f : "", opacity: (_g = group == null ? void 0 : group.opacity) != null ? _g : 1 } : { kind: "number", num: (_h = group == null ? void 0 : group.num) != null ? _h : 0 };
             const local = rankCandidates(target, resolved);
             const library = yield fetchLibraryCandidates(type);
             figma.ui.postMessage({ type: "candidates", category: msg.category, valueKey: msg.valueKey, local, library });
@@ -793,7 +831,7 @@
               try {
                 imported = yield figma.variables.importVariableByKeyAsync(msg.libraryKey);
               } catch (e) {
-                figma.ui.postMessage({ type: "error", message: "Could not import that library variable: " + String((_g = e == null ? void 0 : e.message) != null ? _g : e) });
+                figma.ui.postMessage({ type: "error", message: "Could not import that library variable: " + String((_i = e == null ? void 0 : e.message) != null ? _i : e) });
                 return;
               }
             } else if (msg.variableId) {
@@ -804,7 +842,7 @@
               return;
             }
             const variable = imported;
-            const occ = ((_h = lastScan == null ? void 0 : lastScan.occurrencesAll) != null ? _h : []).filter((o) => o.valueKey === msg.valueKey);
+            const occ = ((_j = lastScan == null ? void 0 : lastScan.occurrencesAll) != null ? _j : []).filter((o) => o.valueKey === msg.valueKey);
             let replaced = 0, skipped = 0;
             for (const o of occ) {
               if (o.replaceable === false) {
@@ -840,7 +878,7 @@
             figma.ui.postMessage({ type: "scan-result", result: filterByScope(lastScope) });
           }
         } catch (e) {
-          figma.ui.postMessage({ type: "error", message: String((_i = e == null ? void 0 : e.message) != null ? _i : e) });
+          figma.ui.postMessage({ type: "error", message: String((_k = e == null ? void 0 : e.message) != null ? _k : e) });
         }
       });
     }

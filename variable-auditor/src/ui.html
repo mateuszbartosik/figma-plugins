@@ -202,6 +202,7 @@
   <span id="ic-unlink"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18.84 12.25 1.72-1.71h-.02a5.004 5.004 0 0 0-.12-7.07 5.006 5.006 0 0 0-6.95 0l-1.72 1.71"/><path d="m5.17 11.75-1.71 1.71a5.004 5.004 0 0 0 .12 7.07 5.006 5.006 0 0 0 6.95 0l1.71-1.71"/><line x1="8" x2="8" y1="2" y2="5"/><line x1="2" x2="5" y1="8" y2="8"/><line x1="16" x2="16" y1="19" y2="22"/><line x1="19" x2="22" y1="16" y2="16"/></svg></span>
   <span id="ic-unplug"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 5 3-3"/><path d="m2 22 3-3"/><path d="M6.3 20.3a2.4 2.4 0 0 0 3.4 0L12 18l-6-6-2.3 2.3a2.4 2.4 0 0 0 0 3.4Z"/><path d="M7.5 13.5 10 11"/><path d="M10.5 16.5 13 14"/><path d="m12 6 6 6 2.3-2.3a2.4 2.4 0 0 0 0-3.4l-2.6-2.6a2.4 2.4 0 0 0-3.4 0Z"/></svg></span>
   <span id="ic-locate"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" x2="5" y1="12" y2="12"/><line x1="19" x2="22" y1="12" y2="12"/><line x1="12" x2="12" y1="2" y2="5"/><line x1="12" x2="12" y1="19" y2="22"/><circle cx="12" cy="12" r="7"/></svg></span>
+  <span id="ic-select"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg></span>
   <span id="ic-trash"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg></span>
   <span id="ic-swap"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg></span>
   <span id="ic-chevron"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
@@ -452,6 +453,23 @@
     blue:   { bg: 'rgba(46,144,250,.12)', fg: 'var(--blue)' },
   };
 
+  // A compact "select all on canvas" control, shared by the broken-references
+  // section header and each hardcoded/unlinked group head. Always stops
+  // propagation: it lives inside a bigger clickable row (.shead's collapse
+  // toggle, or a .grow group's open/close toggle) and must not also trigger that.
+  function selectAllButton(nodeIds) {
+    var btn = el('button', 'mini', icon('select'));
+    btn.type = 'button';
+    var label = 'Select ' + nodeIds.length + ' layer' + (nodeIds.length === 1 ? '' : 's') + ' on canvas';
+    btn.setAttribute('aria-label', label);
+    btn.title = label;
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      post({ type: 'select-nodes', nodeIds: nodeIds });
+    });
+    return btn;
+  }
+
   function renderUnused(list) {
     var card = document.getElementById('card-unused');
     if (!state.checks.unused) { card.hidden = true; return; }
@@ -516,7 +534,9 @@
     var card = document.getElementById('card-broken');
     if (!state.checks.broken) { card.hidden = true; return; }
     card.hidden = false; card.innerHTML = '';
-    card.appendChild(sectionHeader('triangle', 'Broken references', list.length, TINT.rose));
+    var head = sectionHeader('triangle', 'Broken references', list.length, TINT.rose);
+    if (list.length) head.insertBefore(selectAllButton(list.map(function (b) { return b.nodeId; })), head.lastElementChild);
+    card.appendChild(head);
     var body = el('div', 'swrap'); var sb = el('div', 'sbody'); var inner = el('div', 'sbody-inner');
     if (!list.length) inner.appendChild(el('div', 'empty', 'No broken references.'));
     list.forEach(function (b) {
@@ -554,6 +574,8 @@
         head.innerHTML = left +
           '<div class="rmain"><div class="rname">' + esc(g.collectionName) + '</div><div class="rmeta">' + g.count + ' layers</div></div>' +
           '<div class="ract">' + icon('chevron', 'grow-chev') + '</div>';
+        head.querySelector('.ract').insertBefore(
+          selectAllButton(g.refs.map(function (r) { return r.nodeId; })), head.querySelector('.grow-chev'));
         grp.appendChild(head);
         var ow = el('div', 'occ-wrap'); var oc = el('div', 'occ'); var oi = el('div', 'occ-inner');
         g.refs.forEach(function (ref) {
@@ -599,6 +621,8 @@
           post({ type: 'get-candidates', category: g.category, valueKey: g.valueKey });
         });
       }
+      head.querySelector('.ract').insertBefore(
+        selectAllButton(g.occurrences.map(function (o) { return o.nodeId; })), head.querySelector('.grow-chev'));
       grp.appendChild(head);
       var ow = el('div', 'occ-wrap'); var oc = el('div', 'occ'); var oi = el('div', 'occ-inner');
       g.occurrences.forEach(function (o) {

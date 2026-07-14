@@ -117,6 +117,7 @@ export type UIToPlugin =
   | { type: 'set-scope'; scope: Scope }
   | { type: 'set-checks'; checks: Checks; props: HardcodedProps }
   | { type: 'navigate'; nodeId: string; pageId: string }
+  | { type: 'select-nodes'; nodeIds: string[] }
   | { type: 'detach'; nodeId: string; field: string }
   | { type: 'get-candidates'; category: HardcodedCategory; valueKey: string }
   | { type: 'replace'; category: HardcodedCategory; valueKey: string; variableId?: string; libraryKey?: string }
