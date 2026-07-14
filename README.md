@@ -16,13 +16,27 @@ The frame width adapts to the widest variant so nothing clips or overflows.
 
 ### [`variable-auditor`](./variable-auditor)
 
-Audits variable hygiene in a file. Scans for **unused variables**, **broken references** (layers bound to a deleted variable), and **hardcoded values** (colors, corner radius, stroke weight, auto-layout spacing, and typography that aren't bound to a variable). Scope the scan to the current selection, page, or whole document, then:
+Audits variable hygiene in a file. Scans for four categories of issues:
 
-- **Jump** to any layer on canvas from the plugin
-- **Replace** a hardcoded value — or a whole group of them — with a matching variable (exact matches suggested first)
-- **Delete** unused variables in one click
+1. **Unused variables** — variables bound to no layers
+2. **Broken references** — layers bound to a deleted variable
+3. **Unlinked library variables** — layers bound to variables from libraries not enabled in the current file (requires `teamlibrary` permission)
+4. **Hardcoded values** — colors (including gradient stops and shadow effects), corner radius, stroke weight, auto-layout spacing, and typography not bound to a variable
 
-Results group identical values together (e.g. `#FFFFFF · 14 layers`) so large files stay manageable.
+Run scans on demand, scoped to the current selection, page, or whole document. Configure which checks to run in per-property **Settings**. Results group identical values together (e.g. `#FFFFFF · 14 layers`) for manageable browsing in large files.
+
+For each result, you can:
+
+- **Navigate** to any layer on canvas and highlight it
+- **Step through** results with prev/next buttons
+- **Select all** matching instances on canvas at once
+- **Replace** hardcoded values with matching variables (exact matches suggested first; library variable candidates ranked by proximity)
+- **Delete** unused variables with one-click confirmation or bulk delete
+- **Detach** broken references with one-click per item or bulk
+
+See [THIRD-PARTY-NOTICES.md](./THIRD-PARTY-NOTICES.md) for third-party assets embedded in the plugin UI.
+
+**Note:** The `manifest.json` `id` value is a development placeholder. Figma assigns the real plugin id on first publish.
 
 ## Installation
 
