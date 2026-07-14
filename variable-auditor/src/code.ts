@@ -461,7 +461,7 @@ figma.ui.onmessage = async (msg: UIToPlugin) => {
       }
       if (lastScan) {
         // drop replaced occurrences from cache so a re-filter reflects reality
-        lastScan.occurrencesAll = lastScan.occurrencesAll.filter(o => o.valueKey !== msg.valueKey);
+        lastScan.occurrencesAll = lastScan.occurrencesAll.filter(o => !(o.valueKey === msg.valueKey && o.replaceable !== false));
         // at least one binding actually landed — the target variable is no longer unused
         if (replaced > 0) lastScan.unused = lastScan.unused.filter(u => u.id !== variable.id);
       }

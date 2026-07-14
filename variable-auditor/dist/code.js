@@ -688,7 +688,7 @@
               }
             }
             if (lastScan) {
-              lastScan.occurrencesAll = lastScan.occurrencesAll.filter((o) => o.valueKey !== msg.valueKey);
+              lastScan.occurrencesAll = lastScan.occurrencesAll.filter((o) => !(o.valueKey === msg.valueKey && o.replaceable !== false));
               if (replaced > 0)
                 lastScan.unused = lastScan.unused.filter((u) => u.id !== variable.id);
             }
