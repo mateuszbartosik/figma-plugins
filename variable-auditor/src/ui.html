@@ -33,7 +33,7 @@
   .glow{position:absolute; inset:0 0 auto 0; height:160px; pointer-events:none; z-index:1;
     background:linear-gradient(180deg,rgba(124,92,255,.10),rgba(124,92,255,0) 78%);}
   .pad{position:relative; z-index:2; padding:18px 16px 0; flex:1; min-height:0; display:flex; flex-direction:column;}
-  .head,.scope,.metrics,.foot{flex-shrink:0;}
+  .head,.scope,.metrics,.foot,.stepper{flex-shrink:0;}
 
   .head{display:flex; align-items:center; gap:11px; margin-bottom:16px;}
   .logo{width:38px; height:38px; border-radius:11px; background:var(--grad); flex-shrink:0;
@@ -149,6 +149,10 @@
   .foot strong{color:var(--text-2); font-weight:600;}
   .foot .ok{display:flex; align-items:center; gap:5px; color:var(--mint); font-weight:500;}
 
+  .stepper{display:flex; align-items:center; justify-content:center; gap:12px; padding:8px 0 0;}
+  .stepper-pos{font-size:11px; font-weight:500; color:var(--text-2); font-variant-numeric:tabular-nums; min-width:46px; text-align:center;}
+  .mini:disabled{opacity:.35; cursor:default; pointer-events:none;}
+
   @keyframes rise{from{opacity:0; transform:translateY(12px)} to{opacity:1; transform:none}}
   @media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
   :focus-visible{outline:2px solid var(--violet); outline-offset:2px;}
@@ -261,6 +265,16 @@
         <section class="card" data-card id="card-hardcoded" hidden></section>
       </div>
 
+      <div class="stepper hidden" id="stepper">
+        <button class="mini" id="nav-prev" aria-label="Previous occurrence" title="Previous occurrence">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+        </button>
+        <span class="stepper-pos" id="stepper-pos">0 / 0</span>
+        <button class="mini" id="nav-next" aria-label="Next occurrence" title="Next occurrence">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+      </div>
+
       <div class="foot">
         <span id="foot-status">Ready to scan</span>
         <span class="ok"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-4-4"/></svg>Ready</span>
@@ -314,6 +328,8 @@
   var state = { scope: 'page', scanned: false, result: null, pendingReplace: null, checks: { unused: true, broken: true, hardcoded: true, unlinked: true }, props: { color: true, radius: true, strokeWeight: true, spacing: true, typography: true } };
   var selectedUnused = new Set();
   var pickerData = null; // { local, library } payload for the currently open picker (re-rendered live on search)
+  var navList = []; // ordered occurrences from the latest render: broken rows, then unlinked, then hardcoded
+  var navIndex = -1; // index into navList of the row last jumped to (via Locate or the stepper); -1 = none yet
   function post(msg) { parent.postMessage({ pluginMessage: msg }, '*'); }
   function icon(id, cls) {
     var e = document.getElementById('ic-' + id); if (!e) return '';
@@ -328,6 +344,34 @@
     if (prev) prev.classList.remove('current');
     row.classList.add('current');
   }
+
+  // --- occurrence stepper (prev/next through navList) ---
+  var stepperEl = document.getElementById('stepper');
+  var stepperPosEl = document.getElementById('stepper-pos');
+  var navPrevBtn = document.getElementById('nav-prev');
+  var navNextBtn = document.getElementById('nav-next');
+  function updateStepperUI() {
+    if (!stepperEl) return;
+    var has = navList.length >= 1;
+    stepperEl.classList.toggle('hidden', !has);
+    if (!has) return;
+    stepperPosEl.textContent = (navIndex + 1) + ' / ' + navList.length;
+    navPrevBtn.disabled = navIndex <= 0;
+    navNextBtn.disabled = navIndex >= navList.length - 1;
+  }
+  // Jump to navList[i] (clamped to the list's bounds — no wraparound), used by both
+  // the stepper buttons and as the shared landing logic for a Locate click.
+  function navGoto(i) {
+    if (!navList.length) return;
+    navIndex = Math.max(0, Math.min(navList.length - 1, i));
+    var entry = navList[navIndex];
+    markCurrent(entry.row);
+    post({ type: 'navigate', nodeId: entry.nodeId, pageId: entry.pageId });
+    entry.row.scrollIntoView({ block: 'nearest' });
+    updateStepperUI();
+  }
+  if (navPrevBtn) navPrevBtn.addEventListener('click', function () { navGoto(navIndex - 1); });
+  if (navNextBtn) navNextBtn.addEventListener('click', function () { navGoto(navIndex + 1); });
 
   // --- scope control ---
   document.querySelectorAll('.seg').forEach(function (s, i) {
@@ -415,6 +459,7 @@
   };
 
   function render(r) {
+    navList = []; navIndex = -1;
     document.getElementById('m-unused').textContent = r.summary.unused;
     document.getElementById('m-broken').textContent = r.summary.broken;
     document.getElementById('m-unlinked').textContent = r.summary.unlinked;
@@ -436,6 +481,7 @@
     renderBroken(r.broken);
     renderUnlinked(r.unlinked);
     renderHardcoded(r.hardcoded);
+    updateStepperUI();
   }
 
   function sectionHeader(iconId, title, count, tint) {
@@ -549,7 +595,9 @@
         '<button class="mini" aria-label="Locate on canvas">' + icon('locate') + '</button></div>';
       var actBtns = row.querySelectorAll('.mini');
       actBtns[0].addEventListener('click', function () { post({ type: 'detach', nodeId: b.nodeId, field: b.field }); });
-      actBtns[1].addEventListener('click', function () { markCurrent(row); post({ type: 'navigate', nodeId: b.nodeId, pageId: b.pageId }); });
+      var navIdx = navList.length;
+      navList.push({ nodeId: b.nodeId, pageId: b.pageId, row: row });
+      actBtns[1].addEventListener('click', function () { navIndex = navIdx; markCurrent(row); post({ type: 'navigate', nodeId: b.nodeId, pageId: b.pageId }); updateStepperUI(); });
       inner.appendChild(row);
     });
     sb.appendChild(inner); body.appendChild(sb); card.appendChild(body);
@@ -583,7 +631,9 @@
           orow.innerHTML = '<div class="obar"></div><span class="oname">' + esc(ref.nodeName) + '</span>' +
             '<span class="opage">' + esc(fieldLabel(ref.field)) + ' · ' + esc(ref.pageName) + '</span>' +
             '<button class="mini" aria-label="Locate">' + icon('locate') + '</button>';
-          orow.querySelector('.mini').addEventListener('click', function () { markCurrent(orow); post({ type: 'navigate', nodeId: ref.nodeId, pageId: ref.pageId }); });
+          var navIdx = navList.length;
+          navList.push({ nodeId: ref.nodeId, pageId: ref.pageId, row: orow });
+          orow.querySelector('.mini').addEventListener('click', function () { navIndex = navIdx; markCurrent(orow); post({ type: 'navigate', nodeId: ref.nodeId, pageId: ref.pageId }); updateStepperUI(); });
           oi.appendChild(orow);
         });
         oc.appendChild(oi); ow.appendChild(oc); grp.appendChild(ow); inner.appendChild(grp);
@@ -629,7 +679,9 @@
         var orow = el('div', 'orow');
         orow.innerHTML = '<div class="obar"></div><span class="oname">' + esc(o.nodeName) + '</span><span class="opage">' + esc(o.pageName) + '</span>' +
           '<button class="mini" aria-label="Locate">' + icon('locate') + '</button>';
-        orow.querySelector('.mini').addEventListener('click', function () { markCurrent(orow); post({ type: 'navigate', nodeId: o.nodeId, pageId: o.pageId }); });
+        var navIdx = navList.length;
+        navList.push({ nodeId: o.nodeId, pageId: o.pageId, row: orow });
+        orow.querySelector('.mini').addEventListener('click', function () { navIndex = navIdx; markCurrent(orow); post({ type: 'navigate', nodeId: o.nodeId, pageId: o.pageId }); updateStepperUI(); });
         oi.appendChild(orow);
       });
       oc.appendChild(oi); ow.appendChild(oc); grp.appendChild(ow); inner.appendChild(grp);
