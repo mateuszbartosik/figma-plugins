@@ -5,7 +5,7 @@ import {
 } from './analysis.ts';
 import type {
   Scope, Occurrence, BrokenReference, UnusedVariable, HardcodedGroup,
-  UnlinkedRef, UnlinkedGroup, ScanResult, UIToPlugin, Checks, HardcodedProps,
+  UnlinkedRef, UnlinkedGroup, ScanResult, UIToPlugin, Checks, HardcodedProps, LibraryCandidate,
 } from './types.ts';
 
 figma.showUI(__html__, { width: 404, height: 660 });
@@ -370,6 +370,30 @@ async function applyBinding(node: SceneNode, o: Occurrence, variable: Variable):
   }
 }
 
+// Library (published, not-yet-imported) variables of the matching resolved type,
+// offered alongside local candidates in the replace picker. Only collections
+// attached to this file via figma.teamLibrary are visible here; unavailability
+// (older Figma, no libraries attached, or a request failure) degrades to an empty
+// list rather than blocking local candidates. Capped defensively so a very large
+// library doesn't stall the UI — the picker is expected to search/filter over this
+// list rather than rely on exhaustive pagination.
+const LIBRARY_CANDIDATE_CAP = 500;
+async function fetchLibraryCandidates(resolvedType: 'COLOR' | 'FLOAT'): Promise<LibraryCandidate[]> {
+  const library: LibraryCandidate[] = [];
+  try {
+    const collections = await figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync();
+    for (const coll of collections) {
+      const vars = await figma.teamLibrary.getVariablesInLibraryCollectionAsync(coll.key);
+      for (const v of vars) {
+        if (v.resolvedType !== resolvedType) continue;
+        library.push({ key: v.key, name: v.name, collectionName: coll.name, resolvedType });
+        if (library.length >= LIBRARY_CANDIDATE_CAP) return library;
+      }
+    }
+  } catch (e) { return []; }
+  return library;
+}
+
 figma.ui.onmessage = async (msg: UIToPlugin) => {
   try {
     if (msg.type === 'scan') {
@@ -495,12 +519,26 @@ figma.ui.onmessage = async (msg: UIToPlugin) => {
       const target = wantColor
         ? { kind: 'color' as const, colorHex: group?.colorHex ?? '', opacity: group?.opacity ?? 1 }
         : { kind: 'number' as const, num: group?.num ?? 0 };
-      figma.ui.postMessage({ type: 'candidates', category: msg.category, valueKey: msg.valueKey,
-        candidates: rankCandidates(target, resolved) });
+      const local = rankCandidates(target, resolved);
+      const library = await fetchLibraryCandidates(type);
+      figma.ui.postMessage({ type: 'candidates', category: msg.category, valueKey: msg.valueKey, local, library });
     }
     else if (msg.type === 'replace') {
-      const variable = await figma.variables.getVariableByIdAsync(msg.variableId);
-      if (!variable) { figma.ui.postMessage({ type: 'error', message: 'That variable no longer exists — rescan.' }); return; }
+      // Either a library key (import-on-pick, then bind) or a local variableId
+      // (existing path) — the UI sends exactly one depending on which list the
+      // user picked from.
+      let imported: Variable | null = null;
+      if (msg.libraryKey) {
+        try { imported = await figma.variables.importVariableByKeyAsync(msg.libraryKey); }
+        catch (e) {
+          figma.ui.postMessage({ type: 'error', message: 'Could not import that library variable: ' + String((e as Error)?.message ?? e) });
+          return;
+        }
+      } else if (msg.variableId) {
+        imported = await figma.variables.getVariableByIdAsync(msg.variableId);
+      }
+      if (!imported) { figma.ui.postMessage({ type: 'error', message: 'That variable no longer exists — rescan.' }); return; }
+      const variable = imported; // narrow to non-null once, reused below
       const occ = (lastScan?.occurrencesAll ?? []).filter(o => o.valueKey === msg.valueKey);
       let replaced = 0, skipped = 0;
       for (const o of occ) {
@@ -521,8 +559,9 @@ figma.ui.onmessage = async (msg: UIToPlugin) => {
         // at least one binding actually landed — the target variable is no longer unused
         if (replaced > 0) lastScan.unused = lastScan.unused.filter(u => u.id !== variable.id);
       }
+      const prefix = msg.libraryKey ? 'Imported & replaced' : 'Replaced';
       figma.ui.postMessage({ type: 'action-result', ok: true,
-        message: `Replaced ${replaced}${skipped ? `, skipped ${skipped}` : ''}.`,
+        message: `${prefix} ${replaced}${skipped ? `, skipped ${skipped}` : ''}.`,
         replacedValueKey: msg.valueKey, replacedCount: replaced, skippedCount: skipped });
       // update in place from the cached scan rather than a full rescan
       figma.ui.postMessage({ type: 'scan-result', result: filterByScope(lastScope) });

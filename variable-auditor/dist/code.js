@@ -626,8 +626,30 @@
           }
         });
       }
+      var LIBRARY_CANDIDATE_CAP = 500;
+      function fetchLibraryCandidates(resolvedType) {
+        return __async(this, null, function* () {
+          const library = [];
+          try {
+            const collections = yield figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync();
+            for (const coll of collections) {
+              const vars = yield figma.teamLibrary.getVariablesInLibraryCollectionAsync(coll.key);
+              for (const v of vars) {
+                if (v.resolvedType !== resolvedType)
+                  continue;
+                library.push({ key: v.key, name: v.name, collectionName: coll.name, resolvedType });
+                if (library.length >= LIBRARY_CANDIDATE_CAP)
+                  return library;
+              }
+            }
+          } catch (e) {
+            return [];
+          }
+          return library;
+        });
+      }
       figma.ui.onmessage = (msg) => __async(exports, null, function* () {
-        var _a, _b, _c, _d, _e, _f, _g, _h;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _i;
         try {
           if (msg.type === "scan") {
             lastScope = msg.scope;
@@ -762,19 +784,27 @@
             });
             const group = lastScan == null ? void 0 : lastScan.occurrencesAll.find((o) => o.valueKey === msg.valueKey);
             const target = wantColor ? { kind: "color", colorHex: (_d = group == null ? void 0 : group.colorHex) != null ? _d : "", opacity: (_e = group == null ? void 0 : group.opacity) != null ? _e : 1 } : { kind: "number", num: (_f = group == null ? void 0 : group.num) != null ? _f : 0 };
-            figma.ui.postMessage({
-              type: "candidates",
-              category: msg.category,
-              valueKey: msg.valueKey,
-              candidates: rankCandidates(target, resolved)
-            });
+            const local = rankCandidates(target, resolved);
+            const library = yield fetchLibraryCandidates(type);
+            figma.ui.postMessage({ type: "candidates", category: msg.category, valueKey: msg.valueKey, local, library });
           } else if (msg.type === "replace") {
-            const variable = yield figma.variables.getVariableByIdAsync(msg.variableId);
-            if (!variable) {
+            let imported = null;
+            if (msg.libraryKey) {
+              try {
+                imported = yield figma.variables.importVariableByKeyAsync(msg.libraryKey);
+              } catch (e) {
+                figma.ui.postMessage({ type: "error", message: "Could not import that library variable: " + String((_g = e == null ? void 0 : e.message) != null ? _g : e) });
+                return;
+              }
+            } else if (msg.variableId) {
+              imported = yield figma.variables.getVariableByIdAsync(msg.variableId);
+            }
+            if (!imported) {
               figma.ui.postMessage({ type: "error", message: "That variable no longer exists \u2014 rescan." });
               return;
             }
-            const occ = ((_g = lastScan == null ? void 0 : lastScan.occurrencesAll) != null ? _g : []).filter((o) => o.valueKey === msg.valueKey);
+            const variable = imported;
+            const occ = ((_h = lastScan == null ? void 0 : lastScan.occurrencesAll) != null ? _h : []).filter((o) => o.valueKey === msg.valueKey);
             let replaced = 0, skipped = 0;
             for (const o of occ) {
               if (o.replaceable === false) {
@@ -798,10 +828,11 @@
               if (replaced > 0)
                 lastScan.unused = lastScan.unused.filter((u) => u.id !== variable.id);
             }
+            const prefix = msg.libraryKey ? "Imported & replaced" : "Replaced";
             figma.ui.postMessage({
               type: "action-result",
               ok: true,
-              message: `Replaced ${replaced}${skipped ? `, skipped ${skipped}` : ""}.`,
+              message: `${prefix} ${replaced}${skipped ? `, skipped ${skipped}` : ""}.`,
               replacedValueKey: msg.valueKey,
               replacedCount: replaced,
               skippedCount: skipped
@@ -809,7 +840,7 @@
             figma.ui.postMessage({ type: "scan-result", result: filterByScope(lastScope) });
           }
         } catch (e) {
-          figma.ui.postMessage({ type: "error", message: String((_h = e == null ? void 0 : e.message) != null ? _h : e) });
+          figma.ui.postMessage({ type: "error", message: String((_i = e == null ? void 0 : e.message) != null ? _i : e) });
         }
       });
     }

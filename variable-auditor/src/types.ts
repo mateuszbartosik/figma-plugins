@@ -97,6 +97,17 @@ export interface CandidateVariable {
   near?: boolean;
 }
 
+// A published library variable, not yet imported into this file. Unlike
+// CandidateVariable (local), there is no valuePreview: the Plugin API only exposes
+// name/key/resolvedType for library variables — the actual value is only knowable
+// after importVariableByKeyAsync brings it into the file.
+export interface LibraryCandidate {
+  key: string;
+  name: string;
+  collectionName: string;
+  resolvedType: VariableResolvedType;
+}
+
 export interface Checks { unused: boolean; broken: boolean; hardcoded: boolean; unlinked: boolean }
 
 export interface HardcodedProps { color: boolean; radius: boolean; strokeWeight: boolean; spacing: boolean; typography: boolean }
@@ -108,14 +119,14 @@ export type UIToPlugin =
   | { type: 'navigate'; nodeId: string; pageId: string }
   | { type: 'detach'; nodeId: string; field: string }
   | { type: 'get-candidates'; category: HardcodedCategory; valueKey: string }
-  | { type: 'replace'; category: HardcodedCategory; valueKey: string; variableId: string }
+  | { type: 'replace'; category: HardcodedCategory; valueKey: string; variableId?: string; libraryKey?: string }
   | { type: 'delete-variables'; ids: string[] };
 
 export type PluginToUI =
   | { type: 'scan-progress'; scanned: number }
   | { type: 'scan-result'; result: ScanResult }
   | { type: 'settings'; checks: Checks; props: HardcodedProps }
-  | { type: 'candidates'; category: HardcodedCategory; valueKey: string; candidates: CandidateVariable[] }
+  | { type: 'candidates'; category: HardcodedCategory; valueKey: string; local: CandidateVariable[]; library: LibraryCandidate[] }
   | { type: 'action-result'; ok: boolean; message: string;
       removedVariableIds?: string[]; replacedValueKey?: string; replacedCount?: number; skippedCount?: number }
   | { type: 'error'; message: string };
