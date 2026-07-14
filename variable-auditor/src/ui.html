@@ -136,6 +136,9 @@
   .grp.open .grow-chev{transform:rotate(0);}
   .orow{display:flex; align-items:center; gap:9px; padding:7px 8px; border-radius:9px; transition:background .13s;}
   .orow:hover{background:var(--hover);}
+  .orow.current, .row.current{background:rgba(124,92,255,.10);}
+  .orow.current .obar{background:var(--violet);}
+  .row.current{box-shadow:inset 2px 0 0 var(--violet);}
   .obar{width:2px; align-self:stretch; border-radius:2px; background:var(--border-2);}
   .oname{flex:1; font-size:11.5px; color:var(--text-2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   .opage{font-size:10px; color:var(--text-3); font-variant-numeric:tabular-nums;}
@@ -304,6 +307,13 @@
     return cls ? h.replace('<svg', '<svg class="' + cls + '"') : h;
   }
   function el(tag, cls, html) { var e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
+  // Highlight the last row navigated-to, so canvas jumps don't lose your place in the list.
+  function markCurrent(row) {
+    if (!row) return;
+    var prev = document.querySelector('.current');
+    if (prev) prev.classList.remove('current');
+    row.classList.add('current');
+  }
 
   // --- scope control ---
   document.querySelectorAll('.seg').forEach(function (s, i) {
@@ -501,7 +511,7 @@
         '<div class="tglyph" style="color:var(--rose)">' + icon('unlink') + '</div>' +
         '<div class="rmain"><div class="rname">' + esc(b.nodeName) + '</div><div class="rmeta">' + esc(fieldLabel(b.field)) + ' <span class="tag rose">missing</span></div></div>' +
         '<div class="ract"><span class="opage">' + esc(b.pageName) + '</span><button class="mini" aria-label="Locate on canvas">' + icon('locate') + '</button></div>';
-      row.querySelector('.mini').addEventListener('click', function () { post({ type: 'navigate', nodeId: b.nodeId, pageId: b.pageId }); });
+      row.querySelector('.mini').addEventListener('click', function () { markCurrent(row); post({ type: 'navigate', nodeId: b.nodeId, pageId: b.pageId }); });
       inner.appendChild(row);
     });
     sb.appendChild(inner); body.appendChild(sb); card.appendChild(body);
@@ -533,7 +543,7 @@
           orow.innerHTML = '<div class="obar"></div><span class="oname">' + esc(ref.nodeName) + '</span>' +
             '<span class="opage">' + esc(fieldLabel(ref.field)) + ' · ' + esc(ref.pageName) + '</span>' +
             '<button class="mini" aria-label="Locate">' + icon('locate') + '</button>';
-          orow.querySelector('.mini').addEventListener('click', function () { post({ type: 'navigate', nodeId: ref.nodeId, pageId: ref.pageId }); });
+          orow.querySelector('.mini').addEventListener('click', function () { markCurrent(orow); post({ type: 'navigate', nodeId: ref.nodeId, pageId: ref.pageId }); });
           oi.appendChild(orow);
         });
         oc.appendChild(oi); ow.appendChild(oc); grp.appendChild(ow); inner.appendChild(grp);
@@ -568,7 +578,7 @@
         var orow = el('div', 'orow');
         orow.innerHTML = '<div class="obar"></div><span class="oname">' + esc(o.nodeName) + '</span><span class="opage">' + esc(o.pageName) + '</span>' +
           '<button class="mini" aria-label="Locate">' + icon('locate') + '</button>';
-        orow.querySelector('.mini').addEventListener('click', function () { post({ type: 'navigate', nodeId: o.nodeId, pageId: o.pageId }); });
+        orow.querySelector('.mini').addEventListener('click', function () { markCurrent(orow); post({ type: 'navigate', nodeId: o.nodeId, pageId: o.pageId }); });
         oi.appendChild(orow);
       });
       oc.appendChild(oi); ow.appendChild(oc); grp.appendChild(ow); inner.appendChild(grp);
