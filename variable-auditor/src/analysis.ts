@@ -13,6 +13,14 @@ export function formatNumber(n: number): string {
   return String(Number.parseFloat(n.toFixed(3)));
 }
 
+export function colorDistance(a: RGBA, b: RGBA): number {
+  const dr = a.r - b.r;
+  const dg = a.g - b.g;
+  const db = a.b - b.b;
+  const da = a.a - b.a;
+  return Math.sqrt(dr * dr + dg * dg + db * db + da * da);
+}
+
 const CATEGORY_BY_KIND: Record<HardcodedKind, HardcodedCategory> = {
   color: 'color',
   radius: 'radiusStroke',
@@ -161,17 +169,73 @@ function matchesTarget(value: RGBA | number | string | boolean | null, target: T
 }
 
 export function rankCandidates(target: Target, candidates: ResolvedCandidate[]): CandidateVariable[] {
-  return candidates
-    .map(c => ({
-      id: c.id,
-      name: c.name,
-      collectionName: c.collectionName,
-      valuePreview: c.valuePreview,
-      colorHex: c.colorHex,
-      exact: c.modeValues.some(v => matchesTarget(v, target)),
-    }))
-    .sort((a, b) =>
-      (b.exact ? 1 : 0) - (a.exact ? 1 : 0) ||
-      a.collectionName.localeCompare(b.collectionName) ||
-      a.name.localeCompare(b.name));
+  // Build results with exact flag
+  const results: CandidateVariable[] = candidates.map(c => ({
+    id: c.id,
+    name: c.name,
+    collectionName: c.collectionName,
+    valuePreview: c.valuePreview,
+    colorHex: c.colorHex,
+    exact: c.modeValues.some(v => matchesTarget(v, target)),
+  }));
+
+  // Calculate distances for non-exact candidates
+  const distances = new Map<string, number>();
+  for (const c of candidates) {
+    const exact = c.modeValues.some(v => matchesTarget(v, target));
+    if (!exact) {
+      if (target.kind === 'color') {
+        const targetRgba: RGBA = {
+          r: parseInt(target.colorHex.slice(1, 3), 16) / 255,
+          g: parseInt(target.colorHex.slice(3, 5), 16) / 255,
+          b: parseInt(target.colorHex.slice(5, 7), 16) / 255,
+          a: target.opacity,
+        };
+        let minDist = Infinity;
+        for (const v of c.modeValues) {
+          if (typeof v === 'object' && v !== null && 'r' in v) {
+            minDist = Math.min(minDist, colorDistance(targetRgba, v as RGBA));
+          }
+        }
+        if (minDist !== Infinity) distances.set(c.id, minDist);
+      } else if (target.kind === 'number') {
+        let minDelta = Infinity;
+        for (const v of c.modeValues) {
+          if (typeof v === 'number') {
+            minDelta = Math.min(minDelta, Math.abs(v - target.num));
+          }
+        }
+        if (minDelta !== Infinity) distances.set(c.id, minDelta);
+      }
+    }
+  }
+
+  // Flag top 3 non-exact as near if within threshold
+  const threshold = target.kind === 'color' ? 0.5 : 10;
+  const nearIds = Array.from(distances.entries())
+    .sort((a, b) => a[1] - b[1])
+    .slice(0, 3)
+    .filter(([, dist]) => dist <= threshold)
+    .map(([id]) => id);
+
+  for (const result of results) {
+    if (!result.exact && nearIds.includes(result.id)) {
+      result.near = true;
+    }
+  }
+
+  // Sort: exact first by collection/name, then non-exact by distance
+  const exactResults = results.filter(r => r.exact);
+  const nonExactResults = results.filter(r => !r.exact);
+
+  exactResults.sort((a, b) =>
+    a.collectionName.localeCompare(b.collectionName) || a.name.localeCompare(b.name));
+
+  nonExactResults.sort((a, b) => {
+    const distA = distances.get(a.id) ?? Infinity;
+    const distB = distances.get(b.id) ?? Infinity;
+    return distA - distB;
+  });
+
+  return [...exactResults, ...nonExactResults];
 }

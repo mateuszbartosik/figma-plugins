@@ -58,6 +58,13 @@
   function formatNumber(n) {
     return String(Number.parseFloat(n.toFixed(3)));
   }
+  function colorDistance(a, b) {
+    const dr = a.r - b.r;
+    const dg = a.g - b.g;
+    const db = a.b - b.b;
+    const da = a.a - b.a;
+    return Math.sqrt(dr * dr + dg * dg + db * db + da * da);
+  }
   function groupMeta(kind, colorHex, opacity, num) {
     const category = CATEGORY_BY_KIND[kind];
     if (kind === "color") {
@@ -156,14 +163,62 @@
     return hex === target.colorHex && Math.abs(op - target.opacity) < 1e-4;
   }
   function rankCandidates(target, candidates) {
-    return candidates.map((c) => ({
+    const results = candidates.map((c) => ({
       id: c.id,
       name: c.name,
       collectionName: c.collectionName,
       valuePreview: c.valuePreview,
       colorHex: c.colorHex,
       exact: c.modeValues.some((v) => matchesTarget(v, target))
-    })).sort((a, b) => (b.exact ? 1 : 0) - (a.exact ? 1 : 0) || a.collectionName.localeCompare(b.collectionName) || a.name.localeCompare(b.name));
+    }));
+    const distances = /* @__PURE__ */ new Map();
+    for (const c of candidates) {
+      const exact = c.modeValues.some((v) => matchesTarget(v, target));
+      if (!exact) {
+        if (target.kind === "color") {
+          const targetRgba = {
+            r: parseInt(target.colorHex.slice(1, 3), 16) / 255,
+            g: parseInt(target.colorHex.slice(3, 5), 16) / 255,
+            b: parseInt(target.colorHex.slice(5, 7), 16) / 255,
+            a: target.opacity
+          };
+          let minDist = Infinity;
+          for (const v of c.modeValues) {
+            if (typeof v === "object" && v !== null && "r" in v) {
+              minDist = Math.min(minDist, colorDistance(targetRgba, v));
+            }
+          }
+          if (minDist !== Infinity)
+            distances.set(c.id, minDist);
+        } else if (target.kind === "number") {
+          let minDelta = Infinity;
+          for (const v of c.modeValues) {
+            if (typeof v === "number") {
+              minDelta = Math.min(minDelta, Math.abs(v - target.num));
+            }
+          }
+          if (minDelta !== Infinity)
+            distances.set(c.id, minDelta);
+        }
+      }
+    }
+    const threshold = target.kind === "color" ? 0.5 : 10;
+    const nearIds = Array.from(distances.entries()).sort((a, b) => a[1] - b[1]).slice(0, 3).filter(([, dist]) => dist <= threshold).map(([id]) => id);
+    for (const result of results) {
+      if (!result.exact && nearIds.includes(result.id)) {
+        result.near = true;
+      }
+    }
+    const exactResults = results.filter((r) => r.exact);
+    const nonExactResults = results.filter((r) => !r.exact);
+    exactResults.sort((a, b) => a.collectionName.localeCompare(b.collectionName) || a.name.localeCompare(b.name));
+    nonExactResults.sort((a, b) => {
+      var _a, _b;
+      const distA = (_a = distances.get(a.id)) != null ? _a : Infinity;
+      const distB = (_b = distances.get(b.id)) != null ? _b : Infinity;
+      return distA - distB;
+    });
+    return [...exactResults, ...nonExactResults];
   }
   var CATEGORY_BY_KIND, LABEL_BY_KIND;
   var init_analysis = __esm({

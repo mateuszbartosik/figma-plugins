@@ -148,3 +148,83 @@ test('rankCandidates flags exact matches (color, any mode)', () => {
   const out = rankCandidates({ kind: 'color', colorHex: '#2B5CE6', opacity: 1 }, cands);
   assert.strictEqual(out[0].exact, true);
 });
+
+// Tests for colorDistance
+import { colorDistance } from './analysis.ts';
+
+test('colorDistance identical colors → 0', () => {
+  const white = { r: 1, g: 1, b: 1, a: 1 };
+  assert.strictEqual(colorDistance(white, white), 0);
+  const black = { r: 0, g: 0, b: 0, a: 1 };
+  assert.strictEqual(colorDistance(black, black), 0);
+});
+
+test('colorDistance black vs white → sqrt(3) ≈ 1.732', () => {
+  const black = { r: 0, g: 0, b: 0, a: 1 };
+  const white = { r: 1, g: 1, b: 1, a: 1 };
+  const dist = colorDistance(black, white);
+  assert.ok(Math.abs(dist - Math.sqrt(3)) < 1e-6, `expected ~1.732, got ${dist}`);
+});
+
+test('colorDistance includes alpha channel', () => {
+  const opaque = { r: 1, g: 0, b: 0, a: 1 };
+  const transparent = { r: 1, g: 0, b: 0, a: 0.5 };
+  const dist = colorDistance(opaque, transparent);
+  assert.strictEqual(dist, 0.5); // only alpha differs by 0.5
+});
+
+test('colorDistance near colors ordered by distance', () => {
+  const target = { r: 0.5, g: 0.5, b: 0.5, a: 1 };
+  const c1 = { r: 0.51, g: 0.5, b: 0.5, a: 1 };  // distance ≈ 0.01
+  const c2 = { r: 0.6, g: 0.5, b: 0.5, a: 1 };   // distance = 0.1
+  const c3 = { r: 1, g: 0.5, b: 0.5, a: 1 };     // distance = 0.5
+  assert.ok(colorDistance(target, c1) < colorDistance(target, c2));
+  assert.ok(colorDistance(target, c2) < colorDistance(target, c3));
+});
+
+// Tests for rankCandidates with near flag
+test('rankCandidates flags closest non-exact color candidates with near: true', () => {
+  const target = { r: 0.5, g: 0.5, b: 0.5, a: 1 };
+  const cands: ResolvedCandidate[] = [
+    { id: 'a', name: 'gray-1', collectionName: 'Color', resolvedType: 'COLOR', valuePreview: '#7F7F7F', colorHex: '#7F7F7F',
+      modeValues: [{ r: 0.51, g: 0.5, b: 0.5, a: 1 }] },
+    { id: 'b', name: 'gray-2', collectionName: 'Color', resolvedType: 'COLOR', valuePreview: '#BFBFBF', colorHex: '#BFBFBF',
+      modeValues: [{ r: 0.75, g: 0.75, b: 0.75, a: 1 }] },
+    { id: 'c', name: 'white', collectionName: 'Color', resolvedType: 'COLOR', valuePreview: '#FFFFFF', colorHex: '#FFFFFF',
+      modeValues: [{ r: 1, g: 1, b: 1, a: 1 }] },
+  ];
+  const out = rankCandidates({ kind: 'color', colorHex: '#7F7F7F', opacity: 1 }, cands);
+  assert.strictEqual(out[0].id, 'a', 'closest should be first');
+  assert.strictEqual(out[0].near, true, 'closest should be flagged near');
+  assert.strictEqual(out[0].exact, false, 'non-exact should not be marked exact');
+  assert.strictEqual(out[1].id, 'b', 'second closest should be second');
+  assert.strictEqual(out[1].near, true, 'second closest should be flagged near');
+  assert.strictEqual(out[2].id, 'c', 'third closest should be third');
+  assert.strictEqual(out[2].near, undefined, 'far candidate should not be flagged near');
+});
+
+test('rankCandidates flags closest non-exact number candidates with near: true', () => {
+  const cands: ResolvedCandidate[] = [
+    { id: 'a', name: 'space-16', collectionName: 'Spacing', resolvedType: 'FLOAT', valuePreview: '16', modeValues: [16.1] },
+    { id: 'b', name: 'space-20', collectionName: 'Spacing', resolvedType: 'FLOAT', valuePreview: '20', modeValues: [20] },
+    { id: 'c', name: 'space-32', collectionName: 'Spacing', resolvedType: 'FLOAT', valuePreview: '32', modeValues: [32] },
+  ];
+  const out = rankCandidates({ kind: 'number', num: 16 }, cands);
+  assert.strictEqual(out[0].id, 'a', 'closest should be first');
+  assert.strictEqual(out[0].near, true, 'closest should be flagged near');
+  assert.strictEqual(out[1].id, 'b', 'second closest should be second');
+  assert.strictEqual(out[1].near, true, 'second closest should be flagged near');
+  assert.strictEqual(out[2].id, 'c', 'third closest should be third');
+  assert.strictEqual(out[2].near, undefined, 'far candidate should not be flagged near');
+});
+
+test('rankCandidates exact matches are NOT also flagged near', () => {
+  const cands: ResolvedCandidate[] = [
+    { id: 'a', name: 'space-16', collectionName: 'Spacing', resolvedType: 'FLOAT', valuePreview: '16', modeValues: [16] },
+    { id: 'b', name: 'space-17', collectionName: 'Spacing', resolvedType: 'FLOAT', valuePreview: '17', modeValues: [17] },
+  ];
+  const out = rankCandidates({ kind: 'number', num: 16 }, cands);
+  assert.strictEqual(out[0].id, 'a', 'exact match should be first');
+  assert.strictEqual(out[0].exact, true, 'should be marked exact');
+  assert.strictEqual(out[0].near, undefined, 'exact should not be also flagged near');
+});

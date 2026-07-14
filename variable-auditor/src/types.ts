@@ -94,6 +94,7 @@ export interface CandidateVariable {
   exact: boolean;
   valuePreview: string;
   colorHex?: string;
+  near?: boolean;
 }
 
 export interface Checks { unused: boolean; broken: boolean; hardcoded: boolean; unlinked: boolean }
