@@ -375,6 +375,24 @@ function transferChildren(from: FrameNode, to: FrameNode): void {
 
 // ─── Doc frame builder ────────────────────────────────────────────────────────
 
+/**
+ * Read the user-authored description from the source's existing doc, if any.
+ * Returns DESC_PLACEHOLDER when there is no live doc or it was never edited.
+ */
+async function readExistingDescription(source: BaseNode): Promise<string> {
+  const doc = await resolveLiveNode(readSourceDocId(source));
+  if (!doc || doc.type !== 'FRAME') return DESC_PLACEHOLDER;
+  const section = (doc as FrameNode).findOne(
+    (n) => n.type === 'FRAME' && n.name === 'description-section',
+  ) as FrameNode | null;
+  if (!section) return DESC_PLACEHOLDER;
+  const texts = section.children.filter((n) => n.type === 'TEXT') as TextNode[];
+  const valueNode = texts[texts.length - 1];
+  if (!valueNode) return DESC_PLACEHOLDER;
+  const text = valueNode.characters.trim();
+  return text && text !== DESC_PLACEHOLDER ? valueNode.characters : DESC_PLACEHOLDER;
+}
+
 async function generateDocs(
   nodeId: string,
   options: { includeProps: boolean; includeVariants: boolean; includeNotes: boolean },
@@ -386,10 +404,10 @@ async function generateDocs(
   }
 
   await loadFonts();
-  let descriptionText = DESC_PLACEHOLDER; // replaced with preservation logic in Task 4
 
   const isSet = node.type === 'COMPONENT_SET';
   const comp = node as ComponentNode | ComponentSetNode;
+  const descriptionText = await readExistingDescription(comp);
 
   // ── Step 1: measure widths before building anything ───────────────────────
   const { contentW, docW } = calcWidths(comp);
@@ -444,10 +462,13 @@ async function generateDocs(
 
   // Description
   if (options.includeNotes) {
+    const hasDesc = descriptionText !== DESC_PLACEHOLDER;
     const notesSection = frame('description-section');
     vStack(notesSection, docW, 8, PAD_H, 20);
     notesSection.appendChild(txt('DESCRIPTION', 10, 'Bold', '#AAAAAA'));
-    notesSection.appendChild(txt('Add a description for this component…', 13, 'Regular', '#CCCCCC'));
+    notesSection.appendChild(
+      txt(descriptionText, 13, 'Regular', hasDesc ? '#1A1A1A' : '#CCCCCC'),
+    );
     doc.appendChild(notesSection);
     doc.appendChild(hr(docW));
   }

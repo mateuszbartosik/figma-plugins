@@ -45,6 +45,55 @@
   var require_code = __commonJS({
     "src/code.ts"(exports) {
       figma.showUI(__html__, { width: 360, height: 480, title: "Component Docs" });
+      var DESC_PLACEHOLDER = "Add a description for this component\u2026";
+      var KEY_DOC = "docId";
+      var KEY_SOURCE = "sourceId";
+      var KEY_OPTS = "options";
+      var KEY_DESC = "description";
+      function linkNodes(source, doc) {
+        source.setPluginData(KEY_DOC, doc.id);
+        doc.setPluginData(KEY_SOURCE, source.id);
+      }
+      function resolveLiveNode(id) {
+        return __async(this, null, function* () {
+          if (!id)
+            return null;
+          let node = null;
+          try {
+            node = yield figma.getNodeByIdAsync(id);
+          } catch (e) {
+            return null;
+          }
+          if (!node)
+            return null;
+          if (node.removed)
+            return null;
+          return node;
+        });
+      }
+      function saveDocMeta(doc, opts, description) {
+        doc.setPluginData(KEY_OPTS, JSON.stringify(opts));
+        doc.setPluginData(KEY_DESC, description);
+      }
+      function readDocOptions(doc) {
+        const raw = doc.getPluginData(KEY_OPTS);
+        if (!raw)
+          return null;
+        try {
+          return JSON.parse(raw);
+        } catch (e) {
+          return null;
+        }
+      }
+      function readDocSourceId(doc) {
+        return doc.getPluginData(KEY_SOURCE);
+      }
+      function readSourceDocId(source) {
+        return source.getPluginData(KEY_DOC);
+      }
+      function isDocFrame(node) {
+        return node.getPluginData(KEY_SOURCE) !== "";
+      }
       function loadFonts() {
         return __async(this, null, function* () {
           yield Promise.all([
@@ -276,6 +325,30 @@
           return grid;
         });
       }
+      function transferChildren(from, to) {
+        for (const child of [...to.children])
+          child.remove();
+        for (const child of [...from.children])
+          to.appendChild(child);
+      }
+      function readExistingDescription(source) {
+        return __async(this, null, function* () {
+          const doc = yield resolveLiveNode(readSourceDocId(source));
+          if (!doc || doc.type !== "FRAME")
+            return DESC_PLACEHOLDER;
+          const section = doc.findOne(
+            (n) => n.type === "FRAME" && n.name === "description-section"
+          );
+          if (!section)
+            return DESC_PLACEHOLDER;
+          const texts = section.children.filter((n) => n.type === "TEXT");
+          const valueNode = texts[texts.length - 1];
+          if (!valueNode)
+            return DESC_PLACEHOLDER;
+          const text = valueNode.characters.trim();
+          return text && text !== DESC_PLACEHOLDER ? valueNode.characters : DESC_PLACEHOLDER;
+        });
+      }
       function generateDocs(nodeId, options) {
         return __async(this, null, function* () {
           var _a;
@@ -288,6 +361,7 @@
           yield loadFonts();
           const isSet = node.type === "COMPONENT_SET";
           const comp = node;
+          const descriptionText = yield readExistingDescription(comp);
           const { contentW, docW } = calcWidths(comp);
           const defs = (_a = comp.componentPropertyDefinitions) != null ? _a : {};
           const props = yield Promise.all(
@@ -333,10 +407,13 @@
           doc.appendChild(header);
           doc.appendChild(hr(docW));
           if (options.includeNotes) {
+            const hasDesc = descriptionText !== DESC_PLACEHOLDER;
             const notesSection = frame("description-section");
             vStack(notesSection, docW, 8, PAD_H, 20);
             notesSection.appendChild(txt("DESCRIPTION", 10, "Bold", "#AAAAAA"));
-            notesSection.appendChild(txt("Add a description for this component\u2026", 13, "Regular", "#CCCCCC"));
+            notesSection.appendChild(
+              txt(descriptionText, 13, "Regular", hasDesc ? "#1A1A1A" : "#CCCCCC")
+            );
             doc.appendChild(notesSection);
             doc.appendChild(hr(docW));
           }
@@ -362,13 +439,27 @@
             }
             doc.appendChild(varSection);
           }
-          const bounds = comp.absoluteBoundingBox;
-          doc.x = bounds.x + bounds.width + 80;
-          doc.y = bounds.y;
-          figma.currentPage.appendChild(doc);
-          figma.currentPage.selection = [doc];
-          figma.viewport.scrollAndZoomIntoView([doc]);
-          return { propCount: props.length, variantCount };
+          const existingDoc = yield resolveLiveNode(readSourceDocId(comp));
+          const isUpdate = existingDoc !== null && existingDoc.type === "FRAME";
+          let finalDoc;
+          if (isUpdate) {
+            const target = existingDoc;
+            transferChildren(doc, target);
+            target.name = doc.name;
+            doc.remove();
+            finalDoc = target;
+          } else {
+            const bounds = comp.absoluteBoundingBox;
+            doc.x = bounds.x + bounds.width + 80;
+            doc.y = bounds.y;
+            figma.currentPage.appendChild(doc);
+            finalDoc = doc;
+          }
+          linkNodes(comp, finalDoc);
+          saveDocMeta(finalDoc, options, descriptionText);
+          figma.currentPage.selection = [finalDoc];
+          figma.viewport.scrollAndZoomIntoView([finalDoc]);
+          return { propCount: props.length, variantCount, mode: isUpdate ? "update" : "generate" };
         });
       }
       function getSelectionInfo() {
@@ -377,16 +468,33 @@
           const sel = figma.currentPage.selection;
           if (!sel.length)
             return null;
-          const node = sel[0];
-          if (node.type !== "COMPONENT" && node.type !== "COMPONENT_SET")
+          const selected = sel[0];
+          let source = null;
+          let docNode = null;
+          if (selected.type === "COMPONENT" || selected.type === "COMPONENT_SET") {
+            source = selected;
+            const docId = readSourceDocId(source);
+            docNode = yield resolveLiveNode(docId);
+          } else if (isDocFrame(selected)) {
+            const resolvedSource = yield resolveLiveNode(readDocSourceId(selected));
+            if (resolvedSource && (resolvedSource.type === "COMPONENT" || resolvedSource.type === "COMPONENT_SET")) {
+              source = resolvedSource;
+              docNode = selected;
+            }
+          }
+          if (!source)
             return null;
-          const defs = (_a = node.componentPropertyDefinitions) != null ? _a : {};
+          const hasLiveDoc = docNode !== null;
+          const defs = (_a = source.componentPropertyDefinitions) != null ? _a : {};
           return {
-            id: node.id,
-            name: node.name,
-            type: node.type,
+            id: source.id,
+            name: source.name,
+            type: source.type,
             propCount: Object.keys(defs).length,
-            variantCount: node.type === "COMPONENT_SET" ? node.children.length : 0
+            variantCount: source.type === "COMPONENT_SET" ? source.children.length : 0,
+            mode: hasLiveDoc ? "update" : "generate",
+            docId: hasLiveDoc ? docNode.id : null,
+            options: hasLiveDoc ? readDocOptions(docNode) : null
           };
         });
       }
