@@ -1,0 +1,120 @@
+<meta charset="utf-8">
+<style>
+  @font-face{font-family:'Geist';font-weight:100 900;font-style:normal;font-display:block;src:url(data:font/woff2;base64,__GEIST_SANS__) format('woff2');}
+  @font-face{font-family:'Geist Mono';font-weight:100 900;font-style:normal;font-display:block;src:url(data:font/woff2;base64,__GEIST_MONO__) format('woff2');}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  :root{
+    --page:#F4F4F9; --surface:#FFFFFF; --surface-2:#F5F5FB; --track:#EBEBF2;
+    --text:#17161F; --text-2:#6B6979; --text-3:#9B99A9;
+    --border:rgba(22,20,50,.09); --border-2:rgba(22,20,50,.16);
+    --violet:#7C5CFF; --violet-ink:#5B3FD6; --rose:#F0396B; --amber:#E08600; --mint:#0FB981; --blue:#2E90FA;
+    --grad:linear-gradient(135deg,#A45CFF 0%,#6C5CFF 50%,#4D8AFF 100%);
+    --sans:'Geist',-apple-system,system-ui,sans-serif;
+    --mono:'Geist Mono',ui-monospace,Consolas,monospace;
+  }
+  html,body{width:1920px;height:960px;overflow:hidden;}
+  body{
+    position:relative; font-family:var(--sans); color:var(--text);
+    background:
+      radial-gradient(50% 50% at 4% -6%,rgba(124,92,255,.18),transparent 62%),
+      radial-gradient(62% 68% at 104% 108%,rgba(46,144,250,.22),transparent 60%),
+      radial-gradient(38% 40% at 72% -10%,rgba(240,57,107,.10),transparent 60%),
+      var(--page);
+  }
+
+  /* brand block, top-left */
+  .brand{position:absolute; top:118px; left:120px; width:660px;}
+  .brow{display:flex; align-items:center; gap:18px; margin-bottom:32px;}
+  .mark{width:70px;height:70px;border-radius:21px;background:var(--grad);display:flex;align-items:center;justify-content:center;
+    box-shadow:0 18px 36px -14px rgba(108,92,255,.75), 0 2px 0 rgba(255,255,255,.4) inset;}
+  .mark svg{color:#fff;}
+  .brand .name{font-size:36px;font-weight:600;letter-spacing:-.02em;}
+  .tag{font-size:33px;line-height:1.3;font-weight:560;letter-spacing:-.022em;color:var(--text);max-width:620px;}
+  .tag .g{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  .checks{margin-top:40px;display:flex;flex-direction:column;gap:16px;}
+  .chk{display:flex;align-items:center;gap:13px;font-size:20px;font-weight:500;color:var(--text-2);}
+  .chk b{color:var(--text);font-weight:600;}
+  .cdot{width:12px;height:12px;border-radius:50%;flex-shrink:0;}
+  .trust{display:flex;align-items:center;gap:9px;margin-top:42px;font-size:17px;color:var(--text-3);font-weight:450;}
+  .trust svg{color:var(--mint);}
+
+  /* hero panel — authentic plugin proportions, scaled up + tilted, bleeding off bottom-right */
+  .stage{position:absolute; top:112px; left:1298px; width:470px;
+    transform-origin:50% 0; transform:rotate(-5deg) scale(1.5);}
+  .panel{width:470px;background:var(--surface);border:1px solid var(--border);border-radius:22px;padding:22px;
+    box-shadow:0 44px 90px -26px rgba(40,34,90,.55), 0 14px 34px -16px rgba(40,34,90,.3);}
+  .p-head{display:flex;align-items:center;gap:11px;margin-bottom:17px;}
+  .p-logo{width:38px;height:38px;border-radius:11px;background:var(--grad);display:flex;align-items:center;justify-content:center;}
+  .p-logo svg{color:#fff;}
+  .p-title{font-size:15.5px;font-weight:600;letter-spacing:-.01em;}
+  .p-title small{display:block;font-size:10.5px;font-weight:450;color:var(--text-3);letter-spacing:0;margin-top:2px;}
+  .p-tools{margin-left:auto;display:flex;gap:7px;}
+  .p-tools i{width:32px;height:32px;border-radius:9px;border:1px solid var(--border);background:var(--surface);
+    display:flex;align-items:center;justify-content:center;color:var(--text-2);}
+  .seg{display:flex;background:var(--surface-2);border:1px solid var(--border);border-radius:11px;padding:3px;gap:3px;margin-bottom:15px;}
+  .seg span{flex:1;text-align:center;font-size:12px;font-weight:500;color:var(--text-2);padding:8px 0;border-radius:8px;}
+  .seg .on{background:var(--surface);color:var(--text);box-shadow:0 1px 2px rgba(24,20,50,.14);font-weight:600;}
+  .metrics{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:15px;}
+  .m{background:var(--surface-2);border:1px solid var(--border);border-radius:13px;padding:12px 13px;display:flex;align-items:center;gap:11px;}
+  .m .n{font-family:var(--mono);font-size:27px;font-weight:600;line-height:1;letter-spacing:-.03em;}
+  .m .l{font-size:11.5px;color:var(--text-2);font-weight:500;line-height:1.2;}
+  .card{border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:11px;}
+  .c-head{display:flex;align-items:center;gap:9px;padding:12px 15px;background:var(--surface-2);border-bottom:1px solid var(--border);}
+  .dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+  .c-head .t{font-size:13px;font-weight:600;}
+  .c-head .cnt{margin-left:9px;font-size:11px;font-weight:600;color:var(--text-2);background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:3px 9px;}
+  .c-head .rep{margin-left:auto;font-size:12px;font-weight:600;color:#fff;background:var(--grad);border-radius:9px;padding:8px 15px;box-shadow:0 8px 16px -7px rgba(108,92,255,.7);}
+  .orow{display:flex;align-items:center;gap:11px;padding:12px 15px;}
+  .orow+.orow{border-top:1px solid var(--border);}
+  .sw{width:28px;height:28px;border-radius:8px;flex-shrink:0;border:1px solid rgba(0,0,0,.08);}
+  .vchip{width:28px;height:28px;border-radius:8px;flex-shrink:0;background:rgba(124,92,255,.12);color:var(--violet);display:flex;align-items:center;justify-content:center;}
+  .orow .nm{font-size:13px;font-weight:500;}
+  .orow .mono{font-family:var(--mono);font-size:10.5px;color:var(--text-3);margin-top:3px;}
+  .orow .rep{margin-left:auto;font-size:12px;font-weight:600;color:#fff;background:var(--grad);border-radius:9px;padding:8px 14px;
+    box-shadow:0 8px 16px -7px rgba(108,92,255,.7);}
+  .orow .ic{margin-left:auto;display:flex;gap:7px;}
+  .orow .ic i{width:32px;height:32px;border-radius:9px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--text-2);}
+</style>
+
+<div class="brand">
+  <div class="brow">
+    <div class="mark"><svg width="39" height="39" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7 12 12l8.7-5"/><path d="M12 22V12"/></svg></div>
+    <div class="name">Variable Auditor</div>
+  </div>
+  <div class="tag">Find orphaned variables and hardcoded values &mdash; <span class="g">and fix them in a click.</span></div>
+  <div class="checks">
+    <div class="chk"><span class="cdot" style="background:var(--violet)"></span><b>Unused</b>&nbsp;&amp; broken references</div>
+    <div class="chk"><span class="cdot" style="background:var(--blue)"></span><b>Unlinked</b>&nbsp;library variables</div>
+    <div class="chk"><span class="cdot" style="background:var(--amber)"></span><b>Hardcoded</b>&nbsp;colors, radius, spacing &amp; type</div>
+  </div>
+  <div class="trust"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-4-4"/></svg>Runs entirely on-device &mdash; no network, no tracking.</div>
+</div>
+
+<div class="stage">
+  <div class="panel">
+    <div class="p-head">
+      <div class="p-logo"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7 12 12l8.7-5"/><path d="M12 22V12"/></svg></div>
+      <div class="p-title">Variable Auditor<small>128 layers scanned &middot; Page</small></div>
+      <div class="p-tools">
+        <i><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></i>
+        <i><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></i>
+      </div>
+    </div>
+    <div class="seg"><span>Selection</span><span class="on">Page</span><span>Document</span></div>
+    <div class="metrics">
+      <div class="m"><div class="n" style="color:var(--violet)">8</div><div class="l">Unused<br>variables</div></div>
+      <div class="m"><div class="n" style="color:var(--rose)">3</div><div class="l">Broken<br>references</div></div>
+      <div class="m"><div class="n" style="color:var(--blue)">25</div><div class="l">Unlinked<br>library</div></div>
+      <div class="m"><div class="n" style="color:var(--amber)">47</div><div class="l">Hardcoded<br>values</div></div>
+    </div>
+    <div class="card">
+      <div class="c-head"><span class="dot" style="background:var(--amber)"></span><span class="t">Hardcoded colors</span><span class="cnt">47</span><span class="rep">Replace all</span></div>
+      <div class="orow"><span class="sw" style="background:#2E90FA"></span><div><div class="nm">#2E90FA</div><div class="mono">12 layers &middot; fills</div></div><span class="ic"><i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" x2="5" y1="12" y2="12"/><line x1="19" x2="22" y1="12" y2="12"/><line x1="12" x2="12" y1="2" y2="5"/><line x1="12" x2="12" y1="19" y2="22"/><circle cx="12" cy="12" r="7"/></svg></i><i><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg></i></span></div>
+      <div class="orow"><span class="sw" style="background:#F0396B"></span><div><div class="nm">#F0396B</div><div class="mono">9 layers &middot; strokes</div></div><span class="ic"><i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" x2="5" y1="12" y2="12"/><line x1="19" x2="22" y1="12" y2="12"/><line x1="12" x2="12" y1="2" y2="5"/><line x1="12" x2="12" y1="19" y2="22"/><circle cx="12" cy="12" r="7"/></svg></i><i><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg></i></span></div>
+    </div>
+    <div class="card">
+      <div class="c-head"><span class="dot" style="background:var(--violet)"></span><span class="t">Unused variables</span><span class="cnt">8</span></div>
+      <div class="orow"><span class="vchip"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg></span><div><div class="nm">brand/legacy-blue</div><div class="mono">Color &middot; never referenced</div></div><span class="ic"><i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" x2="5" y1="12" y2="12"/><line x1="19" x2="22" y1="12" y2="12"/><line x1="12" x2="12" y1="2" y2="5"/><line x1="12" x2="12" y1="19" y2="22"/><circle cx="12" cy="12" r="7"/></svg></i><i><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></i></span></div>
+    </div>
+  </div>
+</div>
