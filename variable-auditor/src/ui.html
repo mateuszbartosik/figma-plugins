@@ -148,11 +148,13 @@
     border-top:1px solid var(--border); font-size:10.5px; color:var(--text-3);}
   .foot strong{color:var(--text-2); font-weight:600;}
   .foot .ok{display:flex; align-items:center; gap:5px; color:var(--mint); font-weight:500;}
-  .rev-line{display:inline-flex; align-items:center; gap:8px;}
-  .rev-line .live{width:8px; height:8px; border-radius:50%; background:var(--rose); box-shadow:0 0 0 4px rgba(240,57,107,.16); flex-shrink:0;}
-  .rev-line .rlabel{font-size:11px; font-weight:700; letter-spacing:.13em; text-transform:uppercase; color:var(--rose-ink);}
-  .rev-line .rcount{font-family:var(--mono); font-size:11px; color:var(--text-3);}
   .foot .cc{color:var(--mint); font-weight:700; letter-spacing:.1em; text-transform:uppercase;}
+  .live{width:8px; height:8px; border-radius:50%; background:var(--rose); box-shadow:0 0 0 0 rgba(240,57,107,.4); flex-shrink:0; animation:live-pulse 1.4s ease-out infinite;}
+  @keyframes live-pulse{0%{box-shadow:0 0 0 0 rgba(240,57,107,.4);}70%{box-shadow:0 0 0 6px rgba(240,57,107,0);}100%{box-shadow:0 0 0 0 rgba(240,57,107,0);}}
+  .reviewing{flex:1; min-height:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:15px; padding:28px 24px;}
+  .rev-badge{display:inline-flex; align-items:center; gap:9px; padding:9px 16px; border-radius:999px; background:rgba(240,57,107,.08); border:1px solid rgba(240,57,107,.22); font-size:12px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--rose-ink);}
+  .rev-title{font-size:15.5px; font-weight:600; letter-spacing:-.01em;}
+  .rev-sub{font-size:12px; color:var(--text-3); font-family:var(--mono); min-height:15px;}
 
   .stepper{display:flex; align-items:center; justify-content:center; gap:12px; padding:8px 0 0;}
   .stepper-pos{font-size:11px; font-weight:500; color:var(--text-2); font-variant-numeric:tabular-nums; min-width:46px; text-align:center;}
@@ -257,6 +259,12 @@
         <div class="empty-title">Ready for review</div>
         <div class="empty-sub">Run a check on your selection, page, or document to surface unused variables, broken references, and hardcoded values.</div>
         <button class="btn-primary" id="btn-scan">Check page</button>
+      </div>
+
+      <div class="reviewing hidden" id="reviewing">
+        <div class="rev-badge"><span class="live"></span>VAR Review</div>
+        <div class="rev-title">Reviewing your <span id="rev-scope">page</span>&hellip;</div>
+        <div class="rev-sub" id="rev-count"></div>
       </div>
 
       <div class="metrics">
@@ -397,7 +405,26 @@
   });
   document.getElementById('btn-rescan').addEventListener('click', rescan);
   document.getElementById('btn-scan').addEventListener('click', rescan);
-  function rescan() { setBusy(true); post({ type: 'scan', scope: state.scope }); }
+  var scanStartedAt = 0;
+  function rescan() {
+    setBusy(true);
+    document.getElementById('rev-scope').textContent = state.scope;
+    document.getElementById('rev-count').textContent = '';
+    setReviewing(true);
+    scanStartedAt = Date.now();
+    post({ type: 'scan', scope: state.scope });
+  }
+  // Show the prominent "VAR REVIEW" state during an explicit check, hiding the other
+  // panels. Recomputes that aren't a fresh review (scope/settings changes) don't call this.
+  function setReviewing(b) {
+    document.getElementById('reviewing').classList.toggle('hidden', !b);
+    if (b) {
+      document.getElementById('empty').classList.add('hidden');
+      document.querySelector('.metrics').classList.add('hidden');
+      document.getElementById('results').classList.add('hidden');
+      document.querySelector('.foot .ok').classList.add('hidden');
+    }
+  }
   function setBusy(b) {
     document.getElementById('btn-rescan').classList.toggle('busy', b);
     var scanBtn = document.getElementById('btn-scan');
@@ -453,8 +480,15 @@
 
   window.onmessage = function (ev) {
     var m = ev.data.pluginMessage; if (!m) return;
-    if (m.type === 'scan-result') { setBusy(false); setScanned(true); state.result = m.result; render(m.result); }
-    else if (m.type === 'scan-progress') { setBusy(true); var fs = document.getElementById('foot-status'); if (fs) fs.innerHTML = '<span class="rev-line"><span class="live"></span><span class="rlabel">VAR Review</span><span class="rcount">checking ' + m.scanned.toLocaleString() + ' layers</span></span>'; }
+    if (m.type === 'scan-result') {
+      var reviewing = !document.getElementById('reviewing').classList.contains('hidden');
+      var applyResult = function () { setBusy(false); setReviewing(false); setScanned(true); state.result = m.result; render(m.result); };
+      // Hold the VAR REVIEW state a beat so the review moment is always seen, even when the
+      // scan finishes almost instantly (small scopes). Non-review recomputes apply at once.
+      var wait = reviewing ? Math.max(0, 600 - (Date.now() - scanStartedAt)) : 0;
+      if (wait > 0) setTimeout(applyResult, wait); else applyResult();
+    }
+    else if (m.type === 'scan-progress') { setBusy(true); var rc = document.getElementById('rev-count'); if (rc) rc.textContent = m.scanned.toLocaleString() + ' layers checked'; }
     else if (m.type === 'candidates') showPicker(m);
     else if (m.type === 'action-result') { if (m.message) toast(m.message); }
     else if (m.type === 'error') { setBusy(false); toast(m.message); }
