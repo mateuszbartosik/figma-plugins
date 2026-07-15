@@ -771,9 +771,8 @@
               figma.ui.postMessage({ type: "error", message: "Nothing to detach on that layer." });
               return;
             }
-            if (lastScan) {
-              lastScan.brokenAll = lastScan.brokenAll.filter((b) => !(b.nodeId === msg.nodeId && b.field === field));
-            }
+            if (lastScan)
+              lastScan = yield fullScan();
             figma.notify("Detached binding");
             figma.ui.postMessage({ type: "scan-result", result: filterByScope(lastScope) });
           } else if (msg.type === "delete-variables") {
@@ -870,7 +869,8 @@
               }
             }
             if (lastScan) {
-              lastScan.occurrencesAll = lastScan.occurrencesAll.filter((o) => bound.indexOf(o) === -1);
+              const boundSet = new Set(bound);
+              lastScan.occurrencesAll = lastScan.occurrencesAll.filter((o) => !boundSet.has(o));
               if (replaced > 0)
                 lastScan.unused = lastScan.unused.filter((u) => u.id !== variable.id);
             }

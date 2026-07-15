@@ -528,9 +528,13 @@ figma.ui.onmessage = async (msg: UIToPlugin) => {
         figma.ui.postMessage({ type: 'error', message: 'Nothing to detach on that layer.' });
         return;
       }
-      if (lastScan) {
-        lastScan.brokenAll = lastScan.brokenAll.filter(b => !(b.nodeId === msg.nodeId && b.field === field));
-      }
+      // Detaching bakes the last-resolved value into the layer as a concrete, now-unbound
+      // value — which a scan collects as a *hardcoded* occurrence. Filtering only the broken
+      // list in place would drop the broken row without recording that new hardcoded value,
+      // so the summary could under-count hardcoded and even report a false "all clear" (the
+      // same class of bug that was fixed for the replace path). Detach is a single, rare
+      // action, so recompute the whole scan to keep the cache truthful.
+      if (lastScan) lastScan = await fullScan();
       figma.notify('Detached binding');
       figma.ui.postMessage({ type: 'scan-result', result: filterByScope(lastScope) });
     } else if (msg.type === 'delete-variables') {
@@ -617,8 +621,10 @@ figma.ui.onmessage = async (msg: UIToPlugin) => {
         // (node gone, or applyBinding threw) are still hardcoded on canvas and must stay
         // in the cache, otherwise summary.hardcoded can undercount (even hit 0) and the
         // UI falsely reports "all clear". Reference identity is safe here: `bound` holds
-        // the exact object instances drawn from lastScan.occurrencesAll via `occ` above.
-        lastScan.occurrencesAll = lastScan.occurrencesAll.filter(o => bound.indexOf(o) === -1);
+        // the exact object instances drawn from lastScan.occurrencesAll via `occ` above,
+        // so a Set membership test (O(1) per element) is exact and avoids an O(N×M) scan.
+        const boundSet = new Set(bound);
+        lastScan.occurrencesAll = lastScan.occurrencesAll.filter(o => !boundSet.has(o));
         // at least one binding actually landed — the target variable is no longer unused
         if (replaced > 0) lastScan.unused = lastScan.unused.filter(u => u.id !== variable.id);
       }
