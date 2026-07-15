@@ -307,13 +307,14 @@ function buildPropsTable(props: PropInfo[], contentW: number): FrameNode {
 }
 
 const TYPE_STYLES: Record<string, { bg: string; fg: string; label: string }> = {
-  VARIANT: { bg: '#F3EEFF', fg: '#7C3AED', label: 'Variant' },
-  BOOLEAN: { bg: '#F0FDF9', fg: '#0D9488', label: 'Boolean' },
-  TEXT:    { bg: '#FFFBEB', fg: '#B45309', label: 'Text' },
+  VARIANT:       { bg: '#F3EEFF', fg: '#7C3AED', label: 'Variant' },
+  BOOLEAN:       { bg: '#F0FDF9', fg: '#0D9488', label: 'Boolean' },
+  TEXT:          { bg: '#FFFBEB', fg: '#B45309', label: 'Text' },
+  INSTANCE_SWAP: { bg: '#EFF6FF', fg: '#2563EB', label: 'Instance swap' },
 };
 
 function typeStyle(type: string) {
-  return TYPE_STYLES[type] ?? { bg: '#EFF6FF', fg: '#2563EB', label: 'Instance' };
+  return TYPE_STYLES[type] ?? { bg: '#EFF6FF', fg: '#2563EB', label: 'Instance swap' };
 }
 
 // ─── Variant grid ─────────────────────────────────────────────────────────────
