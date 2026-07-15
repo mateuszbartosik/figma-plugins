@@ -492,16 +492,42 @@ async function generateDocs(
 async function getSelectionInfo() {
   const sel = figma.currentPage.selection;
   if (!sel.length) return null;
-  const node = sel[0];
-  if (node.type !== 'COMPONENT' && node.type !== 'COMPONENT_SET') return null;
+  const selected = sel[0];
 
-  const defs = (node as ComponentNode | ComponentSetNode).componentPropertyDefinitions ?? {};
+  // Resolve to the SOURCE component/set. Selecting a doc frame resolves back
+  // to its source; selecting a component uses it directly.
+  let source: ComponentNode | ComponentSetNode | null = null;
+  let docNode: BaseNode | null = null;
+
+  if (selected.type === 'COMPONENT' || selected.type === 'COMPONENT_SET') {
+    source = selected as ComponentNode | ComponentSetNode;
+    const docId = readSourceDocId(source);
+    docNode = await resolveLiveNode(docId);
+  } else if (isDocFrame(selected)) {
+    const resolvedSource = await resolveLiveNode(readDocSourceId(selected));
+    if (
+      resolvedSource &&
+      (resolvedSource.type === 'COMPONENT' || resolvedSource.type === 'COMPONENT_SET')
+    ) {
+      source = resolvedSource as ComponentNode | ComponentSetNode;
+      docNode = selected;
+    }
+  }
+
+  if (!source) return null;
+
+  const hasLiveDoc = docNode !== null;
+  const defs = source.componentPropertyDefinitions ?? {};
+
   return {
-    id: node.id,
-    name: node.name,
-    type: node.type,
+    id: source.id,
+    name: source.name,
+    type: source.type,
     propCount: Object.keys(defs).length,
-    variantCount: node.type === 'COMPONENT_SET' ? (node as ComponentSetNode).children.length : 0,
+    variantCount: source.type === 'COMPONENT_SET' ? (source as ComponentSetNode).children.length : 0,
+    mode: hasLiveDoc ? ('update' as const) : ('generate' as const),
+    docId: hasLiveDoc ? docNode!.id : null,
+    options: hasLiveDoc ? readDocOptions(docNode!) : null,
   };
 }
 
