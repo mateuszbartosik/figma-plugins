@@ -1,5 +1,5 @@
 {
-  "name": "Variable Auditor",
+  "name": "VAR — Variables Audit & Replace",
   "id": "variable-auditor-dev",
   "api": "1.0.0",
   "main": "dist/code.js",

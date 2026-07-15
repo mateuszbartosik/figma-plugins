@@ -1,4 +1,4 @@
-# Variable Auditor — Community listing kit
+# VAR — Community listing kit
 
 Draft assets & copy for publishing to the Figma Community. Regenerate the PNGs
 from the HTML sources with headless Chrome (see **Regenerating** below).
@@ -15,13 +15,13 @@ from the HTML sources with headless Chrome (see **Regenerating** below).
 
 ## Copy
 
-**Name:** Variable Auditor
+**Name:** VAR — Variables Audit & Replace
 
 **Tagline:** Find orphaned variables and hardcoded values — and fix them in a click.
 
 **Description:**
 
-> Keep your Figma variables clean. Variable Auditor scans a selection, a page,
+> Keep your Figma variables clean. VAR scans a selection, a page,
 > or the whole file and surfaces four kinds of hygiene issues:
 >
 > - **Unused variables** — local variables nothing references

@@ -16,7 +16,7 @@ The frame width adapts to the widest variant so nothing clips or overflows.
 
 ### [`variable-auditor`](./variable-auditor)
 
-Audits variable hygiene in a file. Scans for four categories of issues:
+Published as **VAR — Variables Audit & Replace**. Audits variable hygiene in a file. Scans for four categories of issues:
 
 1. **Unused variables** — variables bound to no layers
 2. **Broken references** — layers bound to a deleted variable
