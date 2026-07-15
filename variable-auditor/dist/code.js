@@ -128,27 +128,6 @@
     groups.sort((a, b) => b.count - a.count || a.collectionName.localeCompare(b.collectionName));
     return groups;
   }
-  function isAlias(v) {
-    return typeof v === "object" && v !== null && v.type === "VARIABLE_ALIAS";
-  }
-  function resolveVariableValue(id, modeId, varMap, seen = /* @__PURE__ */ new Set()) {
-    if (seen.has(id))
-      return null;
-    seen.add(id);
-    const v = varMap.get(id);
-    if (!v)
-      return null;
-    let val = v.valuesByMode[modeId];
-    if (val === void 0) {
-      const firstKey = Object.keys(v.valuesByMode)[0];
-      if (firstKey === void 0)
-        return null;
-      val = v.valuesByMode[firstKey];
-    }
-    if (isAlias(val))
-      return resolveVariableValue(val.id, modeId, varMap, seen);
-    return val;
-  }
   function matchesTarget(value, target) {
     var _a;
     if (value === null)
@@ -653,7 +632,7 @@
         });
       }
       figma.ui.onmessage = (msg) => __async(exports, null, function* () {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l;
         try {
           if (msg.type === "scan") {
             lastScope = msg.scope;
@@ -809,26 +788,46 @@
             const localVars = (yield figma.variables.getLocalVariablesAsync()).filter((v) => v.resolvedType === type);
             const collections = yield figma.variables.getLocalVariableCollectionsAsync();
             const collName = new Map(collections.map((c) => [c.id, c.name]));
-            const varMap = new Map(localVars.map((v) => [v.id, { id: v.id, valuesByMode: v.valuesByMode }]));
-            const resolved = localVars.map((v) => {
-              var _a2;
+            const varCache = /* @__PURE__ */ new Map();
+            const resolveConcrete = (variable, modeId, seen) => __async(exports, null, function* () {
+              if (seen.has(variable.id))
+                return null;
+              seen.add(variable.id);
+              const useMode = modeId in variable.valuesByMode ? modeId : Object.keys(variable.valuesByMode)[0];
+              if (useMode === void 0)
+                return null;
+              const val = variable.valuesByMode[useMode];
+              if (val && typeof val === "object" && val.type === "VARIABLE_ALIAS") {
+                if (!varCache.has(val.id))
+                  varCache.set(val.id, yield figma.variables.getVariableByIdAsync(val.id));
+                const target2 = varCache.get(val.id);
+                if (!target2)
+                  return null;
+                return resolveConcrete(target2, Object.keys(target2.valuesByMode)[0], seen);
+              }
+              return val != null ? val : null;
+            });
+            const resolved = [];
+            for (const v of localVars) {
               const modes = Object.keys(v.valuesByMode);
-              const modeValues = modes.map((m) => resolveVariableValue(v.id, m, varMap));
+              const modeValues = [];
+              for (const m of modes)
+                modeValues.push(yield resolveConcrete(v, m, /* @__PURE__ */ new Set()));
               const first = modeValues[0];
               const colorHex = wantColor && first && typeof first === "object" ? rgbaToHex(first) : void 0;
               const valuePreview = wantColor ? colorHex != null ? colorHex : "\u2014" : typeof first === "number" ? formatNumber(first) : "\u2014";
-              return {
+              resolved.push({
                 id: v.id,
                 name: v.name,
-                collectionName: (_a2 = collName.get(v.variableCollectionId)) != null ? _a2 : "\u2014",
+                collectionName: (_f = collName.get(v.variableCollectionId)) != null ? _f : "\u2014",
                 resolvedType: type,
                 valuePreview,
                 colorHex,
                 modeValues
-              };
-            });
+              });
+            }
             const group = lastScan == null ? void 0 : lastScan.occurrencesAll.find((o) => o.valueKey === msg.valueKey);
-            const target = wantColor ? { kind: "color", colorHex: (_f = group == null ? void 0 : group.colorHex) != null ? _f : "", opacity: (_g = group == null ? void 0 : group.opacity) != null ? _g : 1 } : { kind: "number", num: (_h = group == null ? void 0 : group.num) != null ? _h : 0 };
+            const target = wantColor ? { kind: "color", colorHex: (_g = group == null ? void 0 : group.colorHex) != null ? _g : "", opacity: (_h = group == null ? void 0 : group.opacity) != null ? _h : 1 } : { kind: "number", num: (_i = group == null ? void 0 : group.num) != null ? _i : 0 };
             const local = rankCandidates(target, resolved);
             const library = yield fetchLibraryCandidates(type);
             figma.ui.postMessage({ type: "candidates", category: msg.category, valueKey: msg.valueKey, local, library });
@@ -838,7 +837,7 @@
               try {
                 imported = yield figma.variables.importVariableByKeyAsync(msg.libraryKey);
               } catch (e) {
-                figma.ui.postMessage({ type: "error", message: "Could not import that library variable: " + String((_i = e == null ? void 0 : e.message) != null ? _i : e) });
+                figma.ui.postMessage({ type: "error", message: "Could not import that library variable: " + String((_j = e == null ? void 0 : e.message) != null ? _j : e) });
                 return;
               }
             } else if (msg.variableId) {
@@ -850,7 +849,7 @@
               return;
             }
             const variable = imported;
-            const occ = ((_j = lastScan == null ? void 0 : lastScan.occurrencesAll) != null ? _j : []).filter((o) => o.valueKey === msg.valueKey);
+            const occ = ((_k = lastScan == null ? void 0 : lastScan.occurrencesAll) != null ? _k : []).filter((o) => o.valueKey === msg.valueKey);
             let replaced = 0, skipped = 0;
             const bound = [];
             for (const o of occ) {
@@ -891,7 +890,7 @@
             figma.ui.postMessage({ type: "scan-result", result: filterByScope(lastScope) });
           }
         } catch (e) {
-          figma.ui.postMessage({ type: "error", message: String((_k = e == null ? void 0 : e.message) != null ? _k : e) });
+          figma.ui.postMessage({ type: "error", message: String((_l = e == null ? void 0 : e.message) != null ? _l : e) });
         }
       });
     }

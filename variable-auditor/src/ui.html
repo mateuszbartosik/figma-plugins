@@ -174,7 +174,7 @@
   .pick-sublabel{font-size:10.5px;font-weight:500;color:var(--text-3);padding:6px 8px 2px;}
   .pick-row{display:flex;align-items:center;gap:11px;width:100%;padding:9px 8px;border:0;background:transparent;border-radius:11px;cursor:pointer;font-family:inherit;text-align:left;color:var(--text);}
   .pick-row:hover{background:var(--hover);}
-  .pick-val{flex-shrink:0;margin-left:10px;font-family:var(--mono);font-size:12px;font-weight:500;color:var(--text-2);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;}
+  .tval{min-width:26px;height:26px;padding:0 8px;border-radius:8px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;background:var(--surface-2);border:1px solid var(--border);font-family:var(--mono);font-size:12px;font-weight:600;color:var(--text);max-width:104px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .pick-search{display:flex;align-items:center;gap:8px;flex-shrink:0;margin:10px 12px 2px;padding:8px 11px;border:1px solid var(--border);border-radius:11px;background:var(--surface-2);}
   .pick-search svg{color:var(--text-3);flex-shrink:0;}
   .pick-search input{flex:1;min-width:0;border:0;background:transparent;outline:0;font-family:inherit;font-size:12.5px;color:var(--text);}
@@ -782,23 +782,23 @@
     var q = filterText.trim().toLowerCase();
     function matches(nm) { return !q || nm.toLowerCase().indexOf(q) !== -1; }
 
-    function addRow(glyphHtml, nm, metaHtml, onPick, valHtml) {
+    function addRow(glyphHtml, nm, metaHtml, onPick) {
       var row = el('button', 'pick-row');
-      row.innerHTML = glyphHtml + '<div class="rmain"><div class="rname">' + esc(nm) + '</div><div class="rmeta">' + metaHtml + '</div></div>' + (valHtml || '');
+      row.innerHTML = glyphHtml + '<div class="rmain"><div class="rname">' + esc(nm) + '</div><div class="rmeta">' + metaHtml + '</div></div>';
       row.addEventListener('click', function () { onPick(); closePicker(); });
       body.appendChild(row);
     }
     function addLocalRow(c, tagCls, tagLabel) {
-      // Colors show their swatch; numbers show a variable glyph plus the value in a
-      // right-aligned column so a long value (e.g. 11.459) stays legible and rows align.
+      // Colors show their swatch; numbers show the resolved value itself as the left chip
+      // (a number's equivalent of a swatch), so the value — not a generic icon — is the
+      // first thing you see. The chip grows to fit and only ellipsises very long values.
       var glyph = c.colorHex
         ? '<div class="swatch" style="background:' + c.colorHex + '"></div>'
-        : '<div class="tglyph">' + icon('var') + '</div>';
-      var val = c.colorHex ? '' : '<div class="pick-val">' + esc(c.valuePreview) + '</div>';
+        : '<div class="tval">' + esc(c.valuePreview) + '</div>';
       var meta = esc(c.collectionName) + (tagCls ? ' · <span class="tag ' + tagCls + '">' + tagLabel + '</span>' : '');
       addRow(glyph, c.name, meta, function () {
         post({ type: 'replace', category: pr.category, valueKey: pr.valueKey, variableId: c.id });
-      }, val);
+      });
     }
     // Library variables carry no value preview (Figma only exposes name/key/type for a
     // not-yet-imported library variable), so there is no value column — just the variable

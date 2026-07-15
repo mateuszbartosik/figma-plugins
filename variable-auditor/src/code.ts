@@ -1,7 +1,7 @@
 import {
   rgbaToHex, formatNumber, groupMeta, computeUnused, groupHardcoded, groupUnlinked,
-  resolveVariableValue, rankCandidates,
-  type LocalVarInfo, type ResolvableVar, type ResolvedCandidate,
+  rankCandidates,
+  type LocalVarInfo, type ResolvedCandidate,
 } from './analysis.ts';
 import type {
   Scope, Occurrence, BrokenReference, UnusedVariable, HardcodedGroup,
@@ -570,16 +570,37 @@ figma.ui.onmessage = async (msg: UIToPlugin) => {
       const localVars = (await figma.variables.getLocalVariablesAsync()).filter(v => v.resolvedType === type);
       const collections = await figma.variables.getLocalVariableCollectionsAsync();
       const collName = new Map(collections.map(c => [c.id, c.name]));
-      const varMap = new Map<string, ResolvableVar>(localVars.map(v => [v.id, { id: v.id, valuesByMode: v.valuesByMode as any }]));
-      const resolved: ResolvedCandidate[] = localVars.map(v => {
+      // Resolve each candidate's real value by following alias chains through the Figma
+      // API. getVariableByIdAsync resolves LOCAL and REMOTE targets alike, so a semantic
+      // token that aliases a primitive in a library or another collection resolves to its
+      // concrete value instead of showing "—" (a pure local-only map missed that common
+      // design-system case). Fetched targets are cached for this picker request.
+      const varCache = new Map<string, Variable | null>();
+      const resolveConcrete = async (variable: Variable, modeId: string, seen: Set<string>): Promise<any> => {
+        if (seen.has(variable.id)) return null; // cycle guard
+        seen.add(variable.id);
+        const useMode = modeId in variable.valuesByMode ? modeId : Object.keys(variable.valuesByMode)[0];
+        if (useMode === undefined) return null;
+        const val = (variable.valuesByMode as any)[useMode];
+        if (val && typeof val === 'object' && val.type === 'VARIABLE_ALIAS') {
+          if (!varCache.has(val.id)) varCache.set(val.id, await figma.variables.getVariableByIdAsync(val.id));
+          const target = varCache.get(val.id);
+          if (!target) return null;
+          return resolveConcrete(target, Object.keys(target.valuesByMode)[0], seen);
+        }
+        return val ?? null;
+      };
+      const resolved: ResolvedCandidate[] = [];
+      for (const v of localVars) {
         const modes = Object.keys(v.valuesByMode);
-        const modeValues = modes.map(m => resolveVariableValue(v.id, m, varMap) as any);
+        const modeValues: any[] = [];
+        for (const m of modes) modeValues.push(await resolveConcrete(v, m, new Set()));
         const first = modeValues[0];
         const colorHex = wantColor && first && typeof first === 'object' ? rgbaToHex(first) : undefined;
         const valuePreview = wantColor ? (colorHex ?? '—') : (typeof first === 'number' ? formatNumber(first) : '—');
-        return { id: v.id, name: v.name, collectionName: collName.get(v.variableCollectionId) ?? '—',
-          resolvedType: type, valuePreview, colorHex, modeValues };
-      });
+        resolved.push({ id: v.id, name: v.name, collectionName: collName.get(v.variableCollectionId) ?? '—',
+          resolvedType: type, valuePreview, colorHex, modeValues });
+      }
       const group = lastScan?.occurrencesAll.find(o => o.valueKey === msg.valueKey);
       const target = wantColor
         ? { kind: 'color' as const, colorHex: group?.colorHex ?? '', opacity: group?.opacity ?? 1 }
