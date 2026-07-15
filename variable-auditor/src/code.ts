@@ -271,7 +271,14 @@ async function fullScan(): Promise<FullScan> {
   for (const page of figma.root.children) {
     const nodes = (page as PageNode).findAll(() => true);
     for (const node of nodes) {
-      collectNode(node as SceneNode, page as PageNode, usedIds, refs, occurrencesAll, checks.hardcoded, props);
+      // Some nodes findAll returns — notably the instance sublayers backing a slot, or
+      // table cells — throw "node … does not exist" the instant a getter like
+      // boundVariables is read, because their backing store is virtual. Isolate each node
+      // so one such node can't abort the whole scan; skipping it is safe because its
+      // bindings mirror the (accessible) main component, which is scanned anyway.
+      try {
+        collectNode(node as SceneNode, page as PageNode, usedIds, refs, occurrencesAll, checks.hardcoded, props);
+      } catch (e) { /* inaccessible instance sublayer / slot content — skip this node */ }
       if ((++scanned % 800) === 0) figma.ui.postMessage({ type: 'scan-progress', scanned });
     }
   }

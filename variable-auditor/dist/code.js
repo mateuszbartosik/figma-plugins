@@ -510,7 +510,10 @@
           for (const page of figma.root.children) {
             const nodes = page.findAll(() => true);
             for (const node of nodes) {
-              collectNode(node, page, usedIds, refs, occurrencesAll, checks.hardcoded, props);
+              try {
+                collectNode(node, page, usedIds, refs, occurrencesAll, checks.hardcoded, props);
+              } catch (e) {
+              }
               if (++scanned % 800 === 0)
                 figma.ui.postMessage({ type: "scan-progress", scanned });
             }
