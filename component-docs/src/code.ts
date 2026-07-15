@@ -367,6 +367,12 @@ async function buildVariantGrid(
   return grid;
 }
 
+/** Move all children from `from` into `to`, replacing `to`'s existing children. */
+function transferChildren(from: FrameNode, to: FrameNode): void {
+  for (const child of [...to.children]) child.remove();
+  for (const child of [...from.children]) to.appendChild(child);
+}
+
 // ─── Doc frame builder ────────────────────────────────────────────────────────
 
 async function generateDocs(
@@ -380,6 +386,7 @@ async function generateDocs(
   }
 
   await loadFonts();
+  let descriptionText = DESC_PLACEHOLDER; // replaced with preservation logic in Task 4
 
   const isSet = node.type === 'COMPONENT_SET';
   const comp = node as ComponentNode | ComponentSetNode;
@@ -475,16 +482,32 @@ async function generateDocs(
     doc.appendChild(varSection);
   }
 
-  // Place on canvas
-  const bounds = comp.absoluteBoundingBox!;
-  doc.x = bounds.x + bounds.width + 80;
-  doc.y = bounds.y;
+  // ── Step 3: place — update existing frame in place, or create a new one ───
+  const existingDoc = await resolveLiveNode(readSourceDocId(comp));
+  const isUpdate = existingDoc !== null && existingDoc.type === 'FRAME';
 
-  figma.currentPage.appendChild(doc);
-  figma.currentPage.selection = [doc];
-  figma.viewport.scrollAndZoomIntoView([doc]);
+  let finalDoc: FrameNode;
+  if (isUpdate) {
+    const target = existingDoc as FrameNode;
+    transferChildren(doc, target); // move freshly built children into the kept frame
+    doc.remove();                  // discard the empty shell
+    target.name = doc.name;        // refresh name in case the component was renamed
+    finalDoc = target;             // position preserved — do NOT reposition
+  } else {
+    const bounds = comp.absoluteBoundingBox!;
+    doc.x = bounds.x + bounds.width + 80;
+    doc.y = bounds.y;
+    figma.currentPage.appendChild(doc);
+    finalDoc = doc;
+  }
 
-  return { propCount: props.length, variantCount };
+  linkNodes(comp, finalDoc);
+  saveDocMeta(finalDoc, options, descriptionText);
+
+  figma.currentPage.selection = [finalDoc];
+  figma.viewport.scrollAndZoomIntoView([finalDoc]);
+
+  return { propCount: props.length, variantCount, mode: isUpdate ? 'update' : 'generate' };
 }
 
 // ─── Selection helper ─────────────────────────────────────────────────────────
