@@ -336,15 +336,16 @@
           const doc = yield resolveLiveNode(readSourceDocId(source));
           if (!doc || doc.type !== "FRAME")
             return DESC_PLACEHOLDER;
+          const cached = doc.getPluginData(KEY_DESC);
           const section = doc.findOne(
             (n) => n.type === "FRAME" && n.name === "description-section"
           );
           if (!section)
-            return DESC_PLACEHOLDER;
+            return cached || DESC_PLACEHOLDER;
           const texts = section.children.filter((n) => n.type === "TEXT");
           const valueNode = texts[texts.length - 1];
           if (!valueNode)
-            return DESC_PLACEHOLDER;
+            return cached || DESC_PLACEHOLDER;
           const text = valueNode.characters.trim();
           return text && text !== DESC_PLACEHOLDER ? valueNode.characters : DESC_PLACEHOLDER;
         });
@@ -445,6 +446,7 @@
           if (isUpdate) {
             const target = existingDoc;
             transferChildren(doc, target);
+            target.resize(docW, target.height);
             target.name = doc.name;
             doc.remove();
             finalDoc = target;
@@ -484,7 +486,7 @@
           }
           if (!source)
             return null;
-          const hasLiveDoc = docNode !== null;
+          const hasLiveDoc = docNode !== null && docNode.type === "FRAME";
           const defs = (_a = source.componentPropertyDefinitions) != null ? _a : {};
           return {
             id: source.id,
@@ -514,6 +516,13 @@
             const message = err instanceof Error ? err.message : String(err);
             figma.notify(`Error: ${message}`, { error: true });
             figma.ui.postMessage({ type: "error", message });
+          }
+        }
+        if (msg.type === "reveal") {
+          const doc = yield resolveLiveNode(msg.docId);
+          if (doc && doc.type === "FRAME") {
+            figma.currentPage.selection = [doc];
+            figma.viewport.scrollAndZoomIntoView([doc]);
           }
         }
         if (msg.type === "close") {
