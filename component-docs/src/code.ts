@@ -4,7 +4,7 @@ figma.showUI(__html__, { width: 360, height: 480, title: 'Component Docs' });
 
 interface PropInfo {
   name: string;
-  type: 'VARIANT' | 'BOOLEAN' | 'TEXT' | 'INSTANCE_SWAP';
+  type: 'VARIANT' | 'BOOLEAN' | 'TEXT' | 'INSTANCE_SWAP' | 'SLOT';
   options: string[];
   defaultValue: string;
 }
@@ -289,10 +289,15 @@ function buildPropsTable(props: PropInfo[], contentW: number): FrameNode {
 
     // Col 3 — values (expands with docW)
     let col3Child: FrameNode | TextNode;
-    if (prop.type === 'INSTANCE_SWAP' && prop.defaultValue) {
+    if ((prop.type === 'INSTANCE_SWAP' || prop.type === 'SLOT') && prop.defaultValue) {
       col3Child = componentBadge(prop.defaultValue);
     } else {
-      const valStr = prop.options.length > 0 ? prop.options.join(' · ') : `Default: ${prop.defaultValue}`;
+      const valStr =
+        prop.options.length > 0
+          ? prop.options.join(' · ')
+          : prop.defaultValue
+            ? `Default: ${prop.defaultValue}`
+            : '—';
       const valT = txt(valStr, 11, 'Regular', '#6E6E6E');
       valT.textAutoResize = 'TRUNCATE';
       valT.resize(col3 - 24, 16);
@@ -311,6 +316,7 @@ const TYPE_STYLES: Record<string, { bg: string; fg: string; label: string }> = {
   BOOLEAN:       { bg: '#F0FDF9', fg: '#0D9488', label: 'Boolean' },
   TEXT:          { bg: '#FFFBEB', fg: '#B45309', label: 'Text' },
   INSTANCE_SWAP: { bg: '#EFF6FF', fg: '#2563EB', label: 'Instance swap' },
+  SLOT:          { bg: '#EEF2FF', fg: '#4338CA', label: 'Slot' },
 };
 
 function typeStyle(type: string) {
@@ -417,9 +423,9 @@ async function generateDocs(
   const defs = comp.componentPropertyDefinitions ?? {};
   const props: PropInfo[] = await Promise.all(
     Object.entries(defs).map(async ([rawName, def]) => {
-      let defaultValue = String(def.defaultValue);
-      // Resolve instance swap node IDs → component names
-      if (def.type === 'INSTANCE_SWAP' && def.defaultValue) {
+      let defaultValue = def.defaultValue != null ? String(def.defaultValue) : '';
+      // Resolve instance-swap / slot node IDs → component names
+      if ((def.type === 'INSTANCE_SWAP' || def.type === 'SLOT') && def.defaultValue) {
         const ref = await figma.getNodeByIdAsync(String(def.defaultValue));
         if (ref) defaultValue = ref.name;
       }

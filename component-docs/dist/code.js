@@ -263,10 +263,10 @@
           const { bg, fg, label } = typeStyle(prop.type);
           row.appendChild(tableCell(COL2, ROW_H, pill(label, bg, fg)));
           let col3Child;
-          if (prop.type === "INSTANCE_SWAP" && prop.defaultValue) {
+          if ((prop.type === "INSTANCE_SWAP" || prop.type === "SLOT") && prop.defaultValue) {
             col3Child = componentBadge(prop.defaultValue);
           } else {
-            const valStr = prop.options.length > 0 ? prop.options.join(" \xB7 ") : `Default: ${prop.defaultValue}`;
+            const valStr = prop.options.length > 0 ? prop.options.join(" \xB7 ") : prop.defaultValue ? `Default: ${prop.defaultValue}` : "\u2014";
             const valT = txt(valStr, 11, "Regular", "#6E6E6E");
             valT.textAutoResize = "TRUNCATE";
             valT.resize(col3 - 24, 16);
@@ -281,7 +281,8 @@
         VARIANT: { bg: "#F3EEFF", fg: "#7C3AED", label: "Variant" },
         BOOLEAN: { bg: "#F0FDF9", fg: "#0D9488", label: "Boolean" },
         TEXT: { bg: "#FFFBEB", fg: "#B45309", label: "Text" },
-        INSTANCE_SWAP: { bg: "#EFF6FF", fg: "#2563EB", label: "Instance swap" }
+        INSTANCE_SWAP: { bg: "#EFF6FF", fg: "#2563EB", label: "Instance swap" },
+        SLOT: { bg: "#EEF2FF", fg: "#4338CA", label: "Slot" }
       };
       function typeStyle(type) {
         var _a;
@@ -369,8 +370,8 @@
           const props = yield Promise.all(
             Object.entries(defs).map((_0) => __async(this, [_0], function* ([rawName, def]) {
               var _a2;
-              let defaultValue = String(def.defaultValue);
-              if (def.type === "INSTANCE_SWAP" && def.defaultValue) {
+              let defaultValue = def.defaultValue != null ? String(def.defaultValue) : "";
+              if ((def.type === "INSTANCE_SWAP" || def.type === "SLOT") && def.defaultValue) {
                 const ref = yield figma.getNodeByIdAsync(String(def.defaultValue));
                 if (ref)
                   defaultValue = ref.name;
