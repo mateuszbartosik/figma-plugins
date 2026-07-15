@@ -463,23 +463,24 @@ async function generateDocs(
 
   // Description
   if (options.includeNotes) {
-    const hasDesc = descriptionText !== DESC_PLACEHOLDER;
     const notesSection = frame('description-section');
     vStack(notesSection, docW, 8, PAD_H, 20);
     notesSection.appendChild(txt('DESCRIPTION', 10, 'Bold', '#AAAAAA'));
-    notesSection.appendChild(
-      txt(descriptionText, 13, 'Regular', hasDesc ? '#1A1A1A' : '#CCCCCC'),
-    );
+    notesSection.appendChild(txt(descriptionText, 13, 'Regular', '#6E6E6E'));
     doc.appendChild(notesSection);
     doc.appendChild(hr(docW));
   }
 
   // Properties
-  if (options.includeProps && props.length > 0) {
+  if (options.includeProps) {
     const propsSection = frame('properties-section');
     vStack(propsSection, docW, 12, PAD_H, 20);
     propsSection.appendChild(txt(`PROPERTIES (${props.length})`, 10, 'Bold', '#AAAAAA'));
-    propsSection.appendChild(buildPropsTable(props, contentW));
+    if (props.length > 0) {
+      propsSection.appendChild(buildPropsTable(props, contentW));
+    } else {
+      propsSection.appendChild(txt('No configurable properties', 13, 'Regular', '#CCCCCC'));
+    }
     doc.appendChild(propsSection);
   }
 
