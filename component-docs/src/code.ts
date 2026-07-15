@@ -382,13 +382,14 @@ function transferChildren(from: FrameNode, to: FrameNode): void {
 async function readExistingDescription(source: BaseNode): Promise<string> {
   const doc = await resolveLiveNode(readSourceDocId(source));
   if (!doc || doc.type !== 'FRAME') return DESC_PLACEHOLDER;
+  const cached = doc.getPluginData(KEY_DESC); // populated by saveDocMeta on every build
   const section = (doc as FrameNode).findOne(
     (n) => n.type === 'FRAME' && n.name === 'description-section',
   ) as FrameNode | null;
-  if (!section) return DESC_PLACEHOLDER;
+  if (!section) return cached || DESC_PLACEHOLDER;
   const texts = section.children.filter((n) => n.type === 'TEXT') as TextNode[];
   const valueNode = texts[texts.length - 1];
-  if (!valueNode) return DESC_PLACEHOLDER;
+  if (!valueNode) return cached || DESC_PLACEHOLDER;
   const text = valueNode.characters.trim();
   return text && text !== DESC_PLACEHOLDER ? valueNode.characters : DESC_PLACEHOLDER;
 }
@@ -511,6 +512,7 @@ async function generateDocs(
   if (isUpdate) {
     const target = existingDoc as FrameNode;
     transferChildren(doc, target); // move freshly built children into the kept frame
+    target.resize(docW, target.height); // match the freshly computed width (source may have changed)
     target.name = doc.name;        // refresh name in case the component was renamed
     doc.remove();                  // discard the empty shell
     finalDoc = target;             // position preserved — do NOT reposition
@@ -560,7 +562,7 @@ async function getSelectionInfo() {
 
   if (!source) return null;
 
-  const hasLiveDoc = docNode !== null;
+  const hasLiveDoc = docNode !== null && docNode.type === 'FRAME';
   const defs = source.componentPropertyDefinitions ?? {};
 
   return {
