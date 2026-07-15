@@ -148,6 +148,11 @@
     border-top:1px solid var(--border); font-size:10.5px; color:var(--text-3);}
   .foot strong{color:var(--text-2); font-weight:600;}
   .foot .ok{display:flex; align-items:center; gap:5px; color:var(--mint); font-weight:500;}
+  .rev-line{display:inline-flex; align-items:center; gap:8px;}
+  .rev-line .live{width:8px; height:8px; border-radius:50%; background:var(--rose); box-shadow:0 0 0 4px rgba(240,57,107,.16); flex-shrink:0;}
+  .rev-line .rlabel{font-size:11px; font-weight:700; letter-spacing:.13em; text-transform:uppercase; color:var(--rose-ink);}
+  .rev-line .rcount{font-family:var(--mono); font-size:11px; color:var(--text-3);}
+  .foot .cc{color:var(--mint); font-weight:700; letter-spacing:.1em; text-transform:uppercase;}
 
   .stepper{display:flex; align-items:center; justify-content:center; gap:12px; padding:8px 0 0;}
   .stepper-pos{font-size:11px; font-weight:500; color:var(--text-2); font-variant-numeric:tabular-nums; min-width:46px; text-align:center;}
@@ -218,6 +223,7 @@
   <span id="ic-scan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="24" height="24"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3"/><path d="m16 16-1.9-1.9"/></svg></span>
   <span id="ic-search"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span>
   <span id="ic-var"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg></span>
+  <span id="ic-review"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4H5a2 2 0 0 0-2 2v2"/><path d="M16 4h3a2 2 0 0 1 2 2v2"/><path d="M21 16v2a2 2 0 0 1-2 2h-3"/><path d="M8 20H5a2 2 0 0 1-2-2v-2"/><path d="M8.3 12.2 10.8 14.8 15.7 9.6"/></svg></span>
 </div>
 
 <div class="panel">
@@ -226,7 +232,7 @@
 
       <div class="head">
         <div class="logo">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4H5a2 2 0 0 0-2 2v2"/><path d="M16 4h3a2 2 0 0 1 2 2v2"/><path d="M21 16v2a2 2 0 0 1-2 2h-3"/><path d="M8 20H5a2 2 0 0 1-2-2v-2"/><path d="M8.3 12.2 10.8 14.8 15.7 9.6"/></svg>
         </div>
         <div class="htxt">
           <div class="app-title">VAR</div>
@@ -248,9 +254,9 @@
 
       <div class="empty-state" id="empty">
         <div class="empty-icon" id="empty-icon"></div>
-        <div class="empty-title">Ready to audit</div>
-        <div class="empty-sub">Scan for unused variables, broken references, and hardcoded values in your current scope.</div>
-        <button class="btn-primary" id="btn-scan">Scan page</button>
+        <div class="empty-title">Ready for review</div>
+        <div class="empty-sub">Run a check on your selection, page, or document to surface unused variables, broken references, and hardcoded values.</div>
+        <button class="btn-primary" id="btn-scan">Check page</button>
       </div>
 
       <div class="metrics">
@@ -278,7 +284,7 @@
       </div>
 
       <div class="foot">
-        <span id="foot-status">Ready to scan</span>
+        <span id="foot-status">Ready for review</span>
         <span class="ok"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-4-4"/></svg>Ready</span>
       </div>
 
@@ -396,11 +402,11 @@
     document.getElementById('btn-rescan').classList.toggle('busy', b);
     var scanBtn = document.getElementById('btn-scan');
     scanBtn.disabled = b;
-    scanBtn.textContent = b ? 'Scanning…' : 'Scan ' + state.scope;
+    scanBtn.textContent = b ? 'Checking…' : 'Check ' + state.scope;
   }
   function updateScanLabel() {
     var scanBtn = document.getElementById('btn-scan');
-    if (!scanBtn.disabled) scanBtn.textContent = 'Scan ' + state.scope;
+    if (!scanBtn.disabled) scanBtn.textContent = 'Check ' + state.scope;
   }
   function setScanned(v) {
     state.scanned = v;
@@ -448,7 +454,7 @@
   window.onmessage = function (ev) {
     var m = ev.data.pluginMessage; if (!m) return;
     if (m.type === 'scan-result') { setBusy(false); setScanned(true); state.result = m.result; render(m.result); }
-    else if (m.type === 'scan-progress') { setBusy(true); var fs = document.getElementById('foot-status'); if (fs) fs.textContent = 'Scanning… ' + m.scanned; }
+    else if (m.type === 'scan-progress') { setBusy(true); var fs = document.getElementById('foot-status'); if (fs) fs.innerHTML = '<span class="rev-line"><span class="live"></span><span class="rlabel">VAR Review</span><span class="rcount">checking ' + m.scanned.toLocaleString() + ' layers</span></span>'; }
     else if (m.type === 'candidates') showPicker(m);
     else if (m.type === 'action-result') { if (m.message) toast(m.message); }
     else if (m.type === 'error') { setBusy(false); toast(m.message); }
@@ -485,8 +491,8 @@
     var allClear = enabledChips > 0 && total === 0 && r.teamLibraryOk !== false;
     var fs = document.getElementById('foot-status');
     if (fs) fs.innerHTML = allClear
-      ? '<span style="color:var(--mint)">All clear</span> — no issues found in <strong>' + esc(scopeLabel) + '</strong>'
-      : 'Scanned <strong>' + esc(scopeLabel) + '</strong> · ' + total + ' issue' + (total === 1 ? '' : 's') + ' found';
+      ? '<span class="cc">Check complete</span> — no issues found in <strong>' + esc(scopeLabel) + '</strong>'
+      : 'Reviewed <strong>' + esc(scopeLabel) + '</strong> · ' + total + ' issue' + (total === 1 ? '' : 's') + ' found';
     renderUnused(r.unused);
     renderBroken(r.broken);
     renderUnlinked(r.unlinked, r.teamLibraryOk);
@@ -846,7 +852,7 @@
   document.getElementById('picker-search').addEventListener('input', function (e) { renderPickerRows(e.target.value); });
   document.getElementById('picker-cancel').addEventListener('click', closePicker);
 
-  document.getElementById('empty-icon').innerHTML = icon('scan');
+  document.getElementById('empty-icon').innerHTML = icon('review');
   setScanned(false); // open to the empty state; the user triggers the first scan
 </script>
 
