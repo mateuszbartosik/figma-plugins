@@ -280,11 +280,12 @@
       var TYPE_STYLES = {
         VARIANT: { bg: "#F3EEFF", fg: "#7C3AED", label: "Variant" },
         BOOLEAN: { bg: "#F0FDF9", fg: "#0D9488", label: "Boolean" },
-        TEXT: { bg: "#FFFBEB", fg: "#B45309", label: "Text" }
+        TEXT: { bg: "#FFFBEB", fg: "#B45309", label: "Text" },
+        INSTANCE_SWAP: { bg: "#EFF6FF", fg: "#2563EB", label: "Instance swap" }
       };
       function typeStyle(type) {
         var _a;
-        return (_a = TYPE_STYLES[type]) != null ? _a : { bg: "#EFF6FF", fg: "#2563EB", label: "Instance" };
+        return (_a = TYPE_STYLES[type]) != null ? _a : { bg: "#EFF6FF", fg: "#2563EB", label: "Instance swap" };
       }
       function formatVariantName(raw) {
         return raw.split(",").map((part) => {
@@ -408,21 +409,22 @@
           doc.appendChild(header);
           doc.appendChild(hr(docW));
           if (options.includeNotes) {
-            const hasDesc = descriptionText !== DESC_PLACEHOLDER;
             const notesSection = frame("description-section");
             vStack(notesSection, docW, 8, PAD_H, 20);
             notesSection.appendChild(txt("DESCRIPTION", 10, "Bold", "#AAAAAA"));
-            notesSection.appendChild(
-              txt(descriptionText, 13, "Regular", hasDesc ? "#1A1A1A" : "#CCCCCC")
-            );
+            notesSection.appendChild(txt(descriptionText, 13, "Regular", "#6E6E6E"));
             doc.appendChild(notesSection);
             doc.appendChild(hr(docW));
           }
-          if (options.includeProps && props.length > 0) {
+          if (options.includeProps) {
             const propsSection = frame("properties-section");
             vStack(propsSection, docW, 12, PAD_H, 20);
             propsSection.appendChild(txt(`PROPERTIES (${props.length})`, 10, "Bold", "#AAAAAA"));
-            propsSection.appendChild(buildPropsTable(props, contentW));
+            if (props.length > 0) {
+              propsSection.appendChild(buildPropsTable(props, contentW));
+            } else {
+              propsSection.appendChild(txt("No configurable properties", 13, "Regular", "#CCCCCC"));
+            }
             doc.appendChild(propsSection);
           }
           if (options.includeVariants && isSet && variantCount > 0) {
