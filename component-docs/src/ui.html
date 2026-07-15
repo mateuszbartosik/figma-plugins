@@ -37,11 +37,6 @@
       --radius-sm: 10px;
     }
 
-    :focus-visible {
-      outline: 2px solid var(--accent);
-      outline-offset: 2px;
-    }
-
     body {
       font-family: var(--sans);
       font-size: 12px;
@@ -197,6 +192,7 @@
     .success-icon {
       width: 48px; height: 48px; border-radius: 50%;
       background: var(--success-bg);
+      color: var(--success);
       display: flex; align-items: center; justify-content: center;
       font-size: 22px;
     }
@@ -266,7 +262,7 @@
 
   <div class="link-note" id="link-note" style="display:none; margin:10px 16px 0; padding:8px 12px; background:var(--accent-light); border-radius:var(--radius-sm); font-size:11px; color:var(--accent); align-items:center; justify-content:space-between; gap:8px;">
     <span>Linked doc found — will update in place</span>
-    <a href="#" id="reveal-link" style="color:var(--accent); font-weight:600; text-decoration:underline; white-space:nowrap;">Reveal</a>
+    <a href="#" id="reveal-link" style="color:var(--accent-hover); font-weight:600; text-decoration:underline; white-space:nowrap;">Reveal</a>
   </div>
 
   <div class="options">
