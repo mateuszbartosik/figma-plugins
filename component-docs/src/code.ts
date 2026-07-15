@@ -490,8 +490,8 @@ async function generateDocs(
   if (isUpdate) {
     const target = existingDoc as FrameNode;
     transferChildren(doc, target); // move freshly built children into the kept frame
-    doc.remove();                  // discard the empty shell
     target.name = doc.name;        // refresh name in case the component was renamed
+    doc.remove();                  // discard the empty shell
     finalDoc = target;             // position preserved — do NOT reposition
   } else {
     const bounds = comp.absoluteBoundingBox!;
