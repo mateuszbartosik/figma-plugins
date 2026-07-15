@@ -597,6 +597,14 @@ figma.ui.onmessage = async (msg: { type: string; [key: string]: unknown }) => {
     }
   }
 
+  if (msg.type === 'reveal') {
+    const doc = await resolveLiveNode(msg.docId as string);
+    if (doc && doc.type === 'FRAME') {
+      figma.currentPage.selection = [doc as FrameNode];
+      figma.viewport.scrollAndZoomIntoView([doc as FrameNode]);
+    }
+  }
+
   if (msg.type === 'close') {
     figma.closePlugin();
   }

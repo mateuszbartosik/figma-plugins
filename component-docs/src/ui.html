@@ -222,6 +222,11 @@
     <span class="badge" id="comp-badge">Component</span>
   </div>
 
+  <div class="link-note" id="link-note" style="display:none; margin:10px 16px 0; padding:8px 12px; background:var(--accent-light); border-radius:var(--radius-sm); font-size:11px; color:var(--accent); display:flex; align-items:center; justify-content:space-between; gap:8px;">
+    <span>Linked doc found — will update in place</span>
+    <a href="#" id="reveal-link" style="color:var(--accent); font-weight:600; text-decoration:underline; white-space:nowrap;">Reveal</a>
+  </div>
+
   <div class="options">
     <div class="options-label">Include in documentation</div>
 
@@ -272,6 +277,8 @@
 <script>
   let currentNodeId = null;
   let isSet = false;
+  let currentMode = 'generate';
+  let currentDocId = null;
 
   const viewEmpty   = document.getElementById('view-empty');
   const viewMain    = document.getElementById('view-main');
@@ -286,7 +293,7 @@
     if (!currentNodeId) return;
     const btn = document.getElementById('btn-generate');
     btn.disabled = true;
-    btn.textContent = 'Generating…';
+    btn.textContent = currentMode === 'update' ? 'Updating…' : 'Generating…';
     parent.postMessage({
       pluginMessage: {
         type: 'generate',
@@ -304,6 +311,13 @@
     parent.postMessage({ pluginMessage: { type: 'close' } }, 'https://www.figma.com');
   });
 
+  document.getElementById('reveal-link').addEventListener('click', (e) => {
+    e.preventDefault();
+    if (currentDocId) {
+      parent.postMessage({ pluginMessage: { type: 'reveal', docId: currentDocId } }, 'https://www.figma.com');
+    }
+  });
+
   window.onmessage = (event) => {
     const msg = event.data.pluginMessage;
     if (!msg) return;
@@ -318,6 +332,8 @@
       const { info } = msg;
       currentNodeId = info.id;
       isSet = info.type === 'COMPONENT_SET';
+      currentMode = info.mode;
+      currentDocId = info.docId;
 
       document.getElementById('comp-name').textContent = info.name;
       document.getElementById('comp-badge').textContent = isSet ? 'Component Set' : 'Component';
@@ -337,9 +353,20 @@
         variantsCheck.checked = true;
       }
 
+      // Restore checkboxes to the doc's last-used options (update mode only)
+      if (currentMode === 'update' && info.options) {
+        document.getElementById('opt-props').checked = !!info.options.includeProps;
+        document.getElementById('opt-notes').checked = !!info.options.includeNotes;
+        if (isSet) variantsCheck.checked = !!info.options.includeVariants;
+      }
+
+      // Mode-dependent affordances
+      const note = document.getElementById('link-note');
+      note.style.display = currentMode === 'update' ? 'flex' : 'none';
+
       const btn = document.getElementById('btn-generate');
       btn.disabled = false;
-      btn.textContent = 'Generate Documentation';
+      btn.textContent = currentMode === 'update' ? 'Update Documentation' : 'Generate Documentation';
 
       show('view-main');
       return;
@@ -349,8 +376,12 @@
       const parts = [];
       if (msg.propCount > 0) parts.push(`${msg.propCount} ${msg.propCount === 1 ? 'property' : 'properties'}`);
       if (msg.variantCount > 0) parts.push(`${msg.variantCount} variants`);
+      const verb = msg.mode === 'update' ? 'Updated' : 'Documented';
+      const tail = msg.mode === 'update' ? 'the frame was updated in place.' : 'the frame is ready on your canvas.';
       document.getElementById('success-desc').textContent =
-        `Documented ${parts.join(' and ')} — the frame is ready on your canvas.`;
+        `${verb} ${parts.join(' and ')} — ${tail}`;
+      document.querySelector('#view-success h2').textContent =
+        msg.mode === 'update' ? 'Documentation updated!' : 'Documentation generated!';
       show('view-success');
       return;
     }
@@ -358,7 +389,7 @@
     if (msg.type === 'error') {
       const btn = document.getElementById('btn-generate');
       btn.disabled = false;
-      btn.textContent = 'Generate Documentation';
+      btn.textContent = currentMode === 'update' ? 'Update Documentation' : 'Generate Documentation';
       return;
     }
   };
