@@ -45,6 +45,55 @@
   var require_code = __commonJS({
     "src/code.ts"(exports) {
       figma.showUI(__html__, { width: 360, height: 480, title: "Component Docs" });
+      var DESC_PLACEHOLDER = "Add a description for this component\u2026";
+      var KEY_DOC = "docId";
+      var KEY_SOURCE = "sourceId";
+      var KEY_OPTS = "options";
+      var KEY_DESC = "description";
+      function linkNodes(source, doc) {
+        source.setPluginData(KEY_DOC, doc.id);
+        doc.setPluginData(KEY_SOURCE, source.id);
+      }
+      function resolveLiveNode(id) {
+        return __async(this, null, function* () {
+          if (!id)
+            return null;
+          let node = null;
+          try {
+            node = yield figma.getNodeByIdAsync(id);
+          } catch (e) {
+            return null;
+          }
+          if (!node)
+            return null;
+          if (node.removed)
+            return null;
+          return node;
+        });
+      }
+      function saveDocMeta(doc, opts, description) {
+        doc.setPluginData(KEY_OPTS, JSON.stringify(opts));
+        doc.setPluginData(KEY_DESC, description);
+      }
+      function readDocOptions(doc) {
+        const raw = doc.getPluginData(KEY_OPTS);
+        if (!raw)
+          return null;
+        try {
+          return JSON.parse(raw);
+        } catch (e) {
+          return null;
+        }
+      }
+      function readDocSourceId(doc) {
+        return doc.getPluginData(KEY_SOURCE);
+      }
+      function readSourceDocId(source) {
+        return source.getPluginData(KEY_DOC);
+      }
+      function isDocFrame(node) {
+        return node.getPluginData(KEY_SOURCE) !== "";
+      }
       function loadFonts() {
         return __async(this, null, function* () {
           yield Promise.all([
@@ -214,10 +263,10 @@
           const { bg, fg, label } = typeStyle(prop.type);
           row.appendChild(tableCell(COL2, ROW_H, pill(label, bg, fg)));
           let col3Child;
-          if (prop.type === "INSTANCE_SWAP" && prop.defaultValue) {
+          if ((prop.type === "INSTANCE_SWAP" || prop.type === "SLOT") && prop.defaultValue) {
             col3Child = componentBadge(prop.defaultValue);
           } else {
-            const valStr = prop.options.length > 0 ? prop.options.join(" \xB7 ") : `Default: ${prop.defaultValue}`;
+            const valStr = prop.options.length > 0 ? prop.options.join(" \xB7 ") : prop.defaultValue ? `Default: ${prop.defaultValue}` : "\u2014";
             const valT = txt(valStr, 11, "Regular", "#6E6E6E");
             valT.textAutoResize = "TRUNCATE";
             valT.resize(col3 - 24, 16);
@@ -231,11 +280,13 @@
       var TYPE_STYLES = {
         VARIANT: { bg: "#F3EEFF", fg: "#7C3AED", label: "Variant" },
         BOOLEAN: { bg: "#F0FDF9", fg: "#0D9488", label: "Boolean" },
-        TEXT: { bg: "#FFFBEB", fg: "#B45309", label: "Text" }
+        TEXT: { bg: "#FFFBEB", fg: "#B45309", label: "Text" },
+        INSTANCE_SWAP: { bg: "#EFF6FF", fg: "#2563EB", label: "Instance swap" },
+        SLOT: { bg: "#EEF2FF", fg: "#4338CA", label: "Slot" }
       };
       function typeStyle(type) {
         var _a;
-        return (_a = TYPE_STYLES[type]) != null ? _a : { bg: "#EFF6FF", fg: "#2563EB", label: "Instance" };
+        return (_a = TYPE_STYLES[type]) != null ? _a : { bg: "#EFF6FF", fg: "#2563EB", label: "Instance swap" };
       }
       function formatVariantName(raw) {
         return raw.split(",").map((part) => {
@@ -276,6 +327,31 @@
           return grid;
         });
       }
+      function transferChildren(from, to) {
+        for (const child of [...to.children])
+          child.remove();
+        for (const child of [...from.children])
+          to.appendChild(child);
+      }
+      function readExistingDescription(source) {
+        return __async(this, null, function* () {
+          const doc = yield resolveLiveNode(readSourceDocId(source));
+          if (!doc || doc.type !== "FRAME")
+            return DESC_PLACEHOLDER;
+          const cached = doc.getPluginData(KEY_DESC);
+          const section = doc.findOne(
+            (n) => n.type === "FRAME" && n.name === "description-section"
+          );
+          if (!section)
+            return cached || DESC_PLACEHOLDER;
+          const texts = section.children.filter((n) => n.type === "TEXT");
+          const valueNode = texts[texts.length - 1];
+          if (!valueNode)
+            return cached || DESC_PLACEHOLDER;
+          const text = valueNode.characters.trim();
+          return text && text !== DESC_PLACEHOLDER ? valueNode.characters : DESC_PLACEHOLDER;
+        });
+      }
       function generateDocs(nodeId, options) {
         return __async(this, null, function* () {
           var _a;
@@ -288,13 +364,14 @@
           yield loadFonts();
           const isSet = node.type === "COMPONENT_SET";
           const comp = node;
+          const descriptionText = yield readExistingDescription(comp);
           const { contentW, docW } = calcWidths(comp);
           const defs = (_a = comp.componentPropertyDefinitions) != null ? _a : {};
           const props = yield Promise.all(
             Object.entries(defs).map((_0) => __async(this, [_0], function* ([rawName, def]) {
               var _a2;
-              let defaultValue = String(def.defaultValue);
-              if (def.type === "INSTANCE_SWAP" && def.defaultValue) {
+              let defaultValue = def.defaultValue != null ? String(def.defaultValue) : "";
+              if ((def.type === "INSTANCE_SWAP" || def.type === "SLOT") && def.defaultValue) {
                 const ref = yield figma.getNodeByIdAsync(String(def.defaultValue));
                 if (ref)
                   defaultValue = ref.name;
@@ -336,15 +413,19 @@
             const notesSection = frame("description-section");
             vStack(notesSection, docW, 8, PAD_H, 20);
             notesSection.appendChild(txt("DESCRIPTION", 10, "Bold", "#AAAAAA"));
-            notesSection.appendChild(txt("Add a description for this component\u2026", 13, "Regular", "#CCCCCC"));
+            notesSection.appendChild(txt(descriptionText, 13, "Regular", "#6E6E6E"));
             doc.appendChild(notesSection);
             doc.appendChild(hr(docW));
           }
-          if (options.includeProps && props.length > 0) {
+          if (options.includeProps) {
             const propsSection = frame("properties-section");
             vStack(propsSection, docW, 12, PAD_H, 20);
             propsSection.appendChild(txt(`PROPERTIES (${props.length})`, 10, "Bold", "#AAAAAA"));
-            propsSection.appendChild(buildPropsTable(props, contentW));
+            if (props.length > 0) {
+              propsSection.appendChild(buildPropsTable(props, contentW));
+            } else {
+              propsSection.appendChild(txt("No configurable properties", 13, "Regular", "#CCCCCC"));
+            }
             doc.appendChild(propsSection);
           }
           if (options.includeVariants && isSet && variantCount > 0) {
@@ -362,13 +443,28 @@
             }
             doc.appendChild(varSection);
           }
-          const bounds = comp.absoluteBoundingBox;
-          doc.x = bounds.x + bounds.width + 80;
-          doc.y = bounds.y;
-          figma.currentPage.appendChild(doc);
-          figma.currentPage.selection = [doc];
-          figma.viewport.scrollAndZoomIntoView([doc]);
-          return { propCount: props.length, variantCount };
+          const existingDoc = yield resolveLiveNode(readSourceDocId(comp));
+          const isUpdate = existingDoc !== null && existingDoc.type === "FRAME";
+          let finalDoc;
+          if (isUpdate) {
+            const target = existingDoc;
+            transferChildren(doc, target);
+            target.resize(docW, target.height);
+            target.name = doc.name;
+            doc.remove();
+            finalDoc = target;
+          } else {
+            const bounds = comp.absoluteBoundingBox;
+            doc.x = bounds.x + bounds.width + 80;
+            doc.y = bounds.y;
+            figma.currentPage.appendChild(doc);
+            finalDoc = doc;
+          }
+          linkNodes(comp, finalDoc);
+          saveDocMeta(finalDoc, options, descriptionText);
+          figma.currentPage.selection = [finalDoc];
+          figma.viewport.scrollAndZoomIntoView([finalDoc]);
+          return { propCount: props.length, variantCount, mode: isUpdate ? "update" : "generate" };
         });
       }
       function getSelectionInfo() {
@@ -377,16 +473,33 @@
           const sel = figma.currentPage.selection;
           if (!sel.length)
             return null;
-          const node = sel[0];
-          if (node.type !== "COMPONENT" && node.type !== "COMPONENT_SET")
+          const selected = sel[0];
+          let source = null;
+          let docNode = null;
+          if (selected.type === "COMPONENT" || selected.type === "COMPONENT_SET") {
+            source = selected;
+            const docId = readSourceDocId(source);
+            docNode = yield resolveLiveNode(docId);
+          } else if (isDocFrame(selected)) {
+            const resolvedSource = yield resolveLiveNode(readDocSourceId(selected));
+            if (resolvedSource && (resolvedSource.type === "COMPONENT" || resolvedSource.type === "COMPONENT_SET")) {
+              source = resolvedSource;
+              docNode = selected;
+            }
+          }
+          if (!source)
             return null;
-          const defs = (_a = node.componentPropertyDefinitions) != null ? _a : {};
+          const hasLiveDoc = docNode !== null && docNode.type === "FRAME";
+          const defs = (_a = source.componentPropertyDefinitions) != null ? _a : {};
           return {
-            id: node.id,
-            name: node.name,
-            type: node.type,
+            id: source.id,
+            name: source.name,
+            type: source.type,
             propCount: Object.keys(defs).length,
-            variantCount: node.type === "COMPONENT_SET" ? node.children.length : 0
+            variantCount: source.type === "COMPONENT_SET" ? source.children.length : 0,
+            mode: hasLiveDoc ? "update" : "generate",
+            docId: hasLiveDoc ? docNode.id : null,
+            options: hasLiveDoc ? readDocOptions(docNode) : null
           };
         });
       }
@@ -406,6 +519,13 @@
             const message = err instanceof Error ? err.message : String(err);
             figma.notify(`Error: ${message}`, { error: true });
             figma.ui.postMessage({ type: "error", message });
+          }
+        }
+        if (msg.type === "reveal") {
+          const doc = yield resolveLiveNode(msg.docId);
+          if (doc && doc.type === "FRAME") {
+            figma.currentPage.selection = [doc];
+            figma.viewport.scrollAndZoomIntoView([doc]);
           }
         }
         if (msg.type === "close") {
