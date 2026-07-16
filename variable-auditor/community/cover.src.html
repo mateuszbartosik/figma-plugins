@@ -60,6 +60,15 @@
   .m{background:var(--surface-2);border:1px solid var(--border);border-radius:13px;padding:12px 13px;display:flex;align-items:center;gap:11px;}
   .m .n{font-family:var(--mono);font-size:27px;font-weight:700;line-height:1;letter-spacing:-.03em;}
   .m .l{font-size:11.5px;color:var(--text-2);font-weight:500;line-height:1.2;}
+  /* pastel category tints — portfolio signature */
+  .m.cu{background:rgba(124,92,255,.09);border-color:rgba(124,92,255,.18);}
+  .m.cb{background:rgba(240,57,107,.07);border-color:rgba(240,57,107,.16);}
+  .m.cn{background:rgba(46,144,250,.08);border-color:rgba(46,144,250,.17);}
+  .m.ch{background:rgba(224,134,0,.08);border-color:rgba(224,134,0,.18);}
+  /* playful motifs */
+  .sparkle{position:absolute;color:var(--accent);}
+  .scribble-w{position:relative;white-space:nowrap;}
+  .scribble-w svg{position:absolute;left:-1%;bottom:-.26em;width:102%;height:.34em;color:var(--accent);}
   .card{border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:11px;}
   .c-head{display:flex;align-items:center;gap:9px;padding:12px 15px;background:var(--surface-2);border-bottom:1px solid var(--border);}
   .dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
@@ -76,6 +85,9 @@
   .orow .ic i{width:32px;height:32px;border-radius:9px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--text-2);}
 </style>
 
+<svg class="sparkle" style="left:452px;top:150px;width:30px;height:30px" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C12.5 7.5 16.5 11.5 22 12 16.5 12.5 12.5 16.5 12 22 11.5 16.5 7.5 12.5 2 12 7.5 11.5 11.5 7.5 12 2Z"/></svg>
+<svg class="sparkle" style="left:214px;top:742px;width:46px;height:46px" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C12.5 7.5 16.5 11.5 22 12 16.5 12.5 12.5 16.5 12 22 11.5 16.5 7.5 12.5 2 12 7.5 11.5 11.5 7.5 12 2Z"/></svg>
+<svg class="sparkle" style="left:300px;top:806px;width:22px;height:22px;opacity:.7" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C12.5 7.5 16.5 11.5 22 12 16.5 12.5 12.5 16.5 12 22 11.5 16.5 7.5 12.5 2 12 7.5 11.5 11.5 7.5 12 2Z"/></svg>
 <div class="brand">
   <div class="brow">
     <div class="mark"><svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4H5a2 2 0 0 0-2 2v2"/><path d="M16 4h3a2 2 0 0 1 2 2v2"/><path d="M21 16v2a2 2 0 0 1-2 2h-3"/><path d="M8 20H5a2 2 0 0 1-2-2v-2"/><path d="M8.3 12.2 10.8 14.8 15.7 9.6"/></svg></div>
@@ -84,7 +96,7 @@
       <div class="descriptor">Variables Audit &amp; Replace</div>
     </div>
   </div>
-  <div class="tag">Find orphaned variables and hardcoded values &mdash; and fix them <span class="g">in a click</span><svg class="tsmiley" width="40" height="22" viewBox="0 0 48 28" fill="none"><circle cx="14" cy="8" r="2.7" fill="currentColor"/><circle cx="26" cy="7" r="2.7" fill="currentColor"/><path d="M7.5 13.5C11.5 24 34 27 42.5 11.5" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></div>
+  <div class="tag">Find orphaned variables and <span class="scribble-w">hardcoded<svg viewBox="0 0 100 8" preserveAspectRatio="none" fill="none"><path d="M1.5 5.5C22 2 42 7.5 61 4.5S89 2.5 98.5 5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg></span> values &mdash; and fix them <span class="g">in a click</span><svg class="tsmiley" width="40" height="22" viewBox="0 0 48 28" fill="none"><circle cx="14" cy="8" r="2.7" fill="currentColor"/><circle cx="26" cy="7" r="2.7" fill="currentColor"/><path d="M7.5 13.5C11.5 24 34 27 42.5 11.5" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></div>
   <div class="checks">
     <div class="chk"><span class="cdot" style="background:var(--violet)"></span><b>Unused</b>&nbsp;&amp; broken references</div>
     <div class="chk"><span class="cdot" style="background:var(--blue)"></span><b>Unlinked</b>&nbsp;library variables</div>
@@ -105,10 +117,10 @@
     </div>
     <div class="seg"><span>Selection</span><span class="on">Page</span><span>Document</span></div>
     <div class="metrics">
-      <div class="m"><div class="n" style="color:var(--violet)">8</div><div class="l">Unused<br>variables</div></div>
-      <div class="m"><div class="n" style="color:var(--rose)">3</div><div class="l">Broken<br>references</div></div>
-      <div class="m"><div class="n" style="color:var(--blue)">25</div><div class="l">Unlinked<br>library</div></div>
-      <div class="m"><div class="n" style="color:var(--amber)">47</div><div class="l">Hardcoded<br>values</div></div>
+      <div class="m cu"><div class="n" style="color:var(--violet)">8</div><div class="l">Unused<br>variables</div></div>
+      <div class="m cb"><div class="n" style="color:var(--rose)">3</div><div class="l">Broken<br>references</div></div>
+      <div class="m cn"><div class="n" style="color:var(--blue)">25</div><div class="l">Unlinked<br>library</div></div>
+      <div class="m ch"><div class="n" style="color:var(--amber)">47</div><div class="l">Hardcoded<br>values</div></div>
     </div>
     <div class="card">
       <div class="c-head"><span class="dot" style="background:var(--amber)"></span><span class="t">Hardcoded colors</span><span class="cnt">47</span><span class="rep">Replace all</span></div>
