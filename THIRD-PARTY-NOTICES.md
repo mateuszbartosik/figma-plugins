@@ -2,12 +2,12 @@
 
 This project includes the following third-party software:
 
-## Geist and Geist Mono Fonts
+## Funnel Sans and Gochi Hand Fonts
 
-**Source:** https://github.com/vercel/geist-font  
+**Source:** Google Fonts — https://fonts.google.com/specimen/Funnel+Sans and https://fonts.google.com/specimen/Gochi+Hand  
 **License:** SIL Open Font License 1.1 (OFL-1.1)  
-**Copyright:** © Vercel  
-**Usage:** Embedded in `variable-auditor/src/ui.html` as custom fonts
+**Copyright:** © The Funnel Sans Project Authors; © The Gochi Hand Project Authors (Huerta Tipográfica)  
+**Usage:** Embedded (latin subset, base64 woff2) in `variable-auditor/src/ui.html` and `variable-auditor/community/cover.src.html`
 
 ### SIL Open Font License 1.1 Summary
 
@@ -18,7 +18,7 @@ Permission is granted to use, modify, and distribute the fonts freely, provided 
 **Source:** https://github.com/lucide-icons/lucide  
 **License:** ISC License  
 **Copyright:** © Lucide Contributors  
-**Usage:** Embedded in `variable-auditor/src/ui.html`
+**Usage:** Icon paths embedded in `variable-auditor/src/ui.html`
 
 ### ISC License Summary
 
@@ -26,6 +26,7 @@ Permission is granted to use, modify, and distribute the software freely, provid
 
 ---
 
-For the complete license texts, please refer to the license pages on GitHub:
-- [Geist Font License](https://github.com/vercel/geist-font/blob/main/LICENSE)
+For the complete license texts, please refer to the license pages:
+- [Funnel Sans on Google Fonts](https://fonts.google.com/specimen/Funnel+Sans/license)
+- [Gochi Hand on Google Fonts](https://fonts.google.com/specimen/Gochi+Hand/license)
 - [Lucide License](https://github.com/lucide-icons/lucide/blob/main/LICENSE)

@@ -1,7 +1,9 @@
 # VAR — Community listing kit
 
-Draft assets & copy for publishing to the Figma Community. Regenerate the PNGs
-from the HTML sources with headless Chrome (see **Regenerating** below).
+Draft assets & copy for publishing to the Figma Community. Styled to match the
+portfolio design system (warm off-white `#F6F5F4`, electric-blue `#3252F8`,
+Funnel Sans + Gochi Hand, flat with hairline borders). Regenerate the PNGs from
+the HTML sources with headless Chrome (see **Regenerating** below).
 
 ## Assets
 
@@ -11,7 +13,7 @@ from the HTML sources with headless Chrome (see **Regenerating** below).
 | `icon-256.png` | Hi-dpi icon preview | 256×256, transparent |
 | `icon-1024.png` | Icon master (downscale as needed) | 1024×1024, transparent |
 | `cover.png` | Community cover art | 1920×960 |
-| `icon.html`, `cover.src.html` | Editable sources (plugin design tokens + Geist) | — |
+| `icon.html`, `cover.src.html` | Self-contained HTML sources (portfolio tokens; Funnel Sans + Gochi Hand embedded as base64) | — |
 
 ## Copy
 
@@ -50,26 +52,18 @@ from the HTML sources with headless Chrome (see **Regenerating** below).
 
 ## Regenerating the PNGs
 
-Headless Chrome renders the HTML sources to PNG. Chrome loads `file://` directly, so
-no local server is needed. Run these from inside this folder.
+Headless Chrome renders the HTML sources to PNG. Both `cover.src.html` and
+`icon.html` are **self-contained** (fonts embedded as base64), so no injection or
+local server is needed — render them directly with an absolute `file://` path:
 
-1. Inline the fonts into `cover.html` so it is self-contained (`cover.src.html` ships
-   with `__GEIST_*__` placeholders; `geist-sans.woff2` / `geist-mono.woff2` are Fontsource):
+```
+# cover — 1920×960
+chrome --headless --disable-gpu --hide-scrollbars --force-device-scale-factor=1 \
+  --virtual-time-budget=1500 --screenshot=cover.png --window-size=1920,960 "file:///ABS/PATH/cover.src.html"
 
-   ```
-   node -e "const fs=require('fs');let h=fs.readFileSync('cover.src.html','utf8');h=h.replace('__GEIST_SANS__',fs.readFileSync('geist-sans.woff2').toString('base64')).replace('__GEIST_MONO__',fs.readFileSync('geist-mono.woff2').toString('base64'));fs.writeFileSync('cover.html',h)"
-   ```
+# icon — rendered at 2× to 1024×1024, transparent
+chrome --headless --disable-gpu --default-background-color=00000000 \
+  --force-device-scale-factor=2 --screenshot=icon-1024.png --window-size=512,512 "file:///ABS/PATH/icon.html"
+```
 
-2. Render (use an absolute `file://` path to the HTML):
-
-   ```
-   # cover — 1920×960
-   chrome --headless --disable-gpu --hide-scrollbars --force-device-scale-factor=1 \
-     --screenshot=cover.png --window-size=1920,960 "file:///ABS/PATH/cover.html"
-
-   # icon — rendered at 2× to 1024×1024, transparent (icon.html has no external fonts)
-   chrome --headless --disable-gpu --default-background-color=00000000 \
-     --force-device-scale-factor=2 --screenshot=icon-1024.png --window-size=512,512 "file:///ABS/PATH/icon.html"
-   ```
-
-3. Downscale `icon-1024.png` to 128×128 (and 256×256) with any high-quality bicubic resampler for the Figma icon.
+Then downscale `icon-1024.png` to 128×128 (and 256×256) with any high-quality bicubic resampler for the Figma icon.
