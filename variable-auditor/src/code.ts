@@ -1,0 +1,671 @@
+import {
+  rgbaToHex, formatNumber, groupMeta, computeUnused, groupHardcoded, groupUnlinked,
+  rankCandidates,
+  type LocalVarInfo, type ResolvedCandidate,
+} from './analysis.ts';
+import type {
+  Scope, Occurrence, BrokenReference, UnusedVariable, HardcodedGroup,
+  UnlinkedRef, UnlinkedGroup, ScanResult, UIToPlugin, Checks, HardcodedProps, LibraryCandidate,
+} from './types.ts';
+
+figma.showUI(__html__, { width: 404, height: 660 });
+
+let checks: Checks = { unused: true, broken: true, hardcoded: true, unlinked: true };
+let props: HardcodedProps = { color: true, radius: true, strokeWeight: true, spacing: true, typography: true };
+let lastScope: Scope = 'page';
+const CHECKS_KEY = 'variable-auditor:checks';
+const PROPS_KEY = 'variable-auditor:props';
+
+(async () => {
+  try { const saved = await figma.clientStorage.getAsync(CHECKS_KEY); if (saved) checks = { ...checks, ...saved }; } catch (e) {}
+  try { const savedProps = await figma.clientStorage.getAsync(PROPS_KEY); if (savedProps) props = { ...props, ...savedProps }; } catch (e) {}
+  figma.ui.postMessage({ type: 'settings', checks, props });
+})();
+
+interface FullScan {
+  unused: UnusedVariable[];
+  brokenAll: BrokenReference[];
+  occurrencesAll: Occurrence[];
+  unlinkedRefsAll: UnlinkedRef[];
+  // Whether the attached-library fetch succeeded, only meaningful when checks.unlinked
+  // was on for this scan — undefined when the check was off (not attempted).
+  teamLibraryOk?: boolean;
+}
+let lastScan: FullScan | null = null;
+// Attached-library collection keys, cached for the plugin session. Reset (set to null)
+// only on an explicit user rescan (`scan` message) so set-scope/set-checks/action-driven
+// updates reuse it instead of re-hitting figma.teamLibrary on every recompute.
+let attachedKeysCache: Set<string> | null = null;
+
+function isAliasValue(v: unknown): v is { type: 'VARIABLE_ALIAS'; id: string } {
+  return typeof v === 'object' && v !== null && (v as any).type === 'VARIABLE_ALIAS';
+}
+
+function pushColorOccurrences(
+  node: SceneNode, page: PageNode, key: 'fills' | 'strokes', out: Occurrence[],
+) {
+  const paints = (node as any)[key];
+  if (!Array.isArray(paints)) return;
+  paints.forEach((paint: Paint, i: number) => {
+    if (paint.visible === false) return;
+    if (paint.type === 'SOLID') {
+      if ((paint as any).boundVariables?.color) return; // already bound
+      const colorHex = rgbaToHex({ ...paint.color, a: 1 });
+      const opacity = paint.opacity ?? 1;
+      const meta = groupMeta('color', colorHex, opacity, null);
+      out.push({
+        nodeId: node.id, nodeName: node.name, pageId: page.id, pageName: page.name,
+        category: meta.category, kind: 'color', field: key, paintIndex: i,
+        valueKey: meta.valueKey, colorHex, opacity,
+      });
+      return;
+    }
+    if (
+      paint.type === 'GRADIENT_LINEAR' || paint.type === 'GRADIENT_RADIAL' ||
+      paint.type === 'GRADIENT_ANGULAR' || paint.type === 'GRADIENT_DIAMOND'
+    ) {
+      pushGradientStopOccurrences(node, page, key, paint, i, out);
+    }
+  });
+}
+
+// Gradient-stop colors are surfaced navigate-only in v1: the replace flow
+// (applyBinding) is built around a single paint slot per occurrence, and rebinding
+// a specific stop within paint.gradientStops needs its own dedicated path — left for
+// a future iteration. `replaceable: false` lets the UI suppress the Replace action.
+function pushGradientStopOccurrences(
+  node: SceneNode, page: PageNode, key: 'fills' | 'strokes', paint: GradientPaint, paintIndex: number, out: Occurrence[],
+) {
+  paint.gradientStops.forEach((stop) => {
+    if (stop.boundVariables?.color) return; // already bound
+    const colorHex = rgbaToHex(stop.color);
+    const opacity = stop.color.a ?? 1;
+    const meta = groupMeta('color', colorHex, opacity, null);
+    out.push({
+      nodeId: node.id, nodeName: node.name, pageId: page.id, pageName: page.name,
+      category: meta.category, kind: 'color', field: `${key}[gradientStop]`, paintIndex,
+      valueKey: meta.valueKey, colorHex, opacity, replaceable: false,
+    });
+  });
+}
+
+// Shadow-effect colors, same navigate-only rationale as gradient stops above:
+// figma.variables.setBoundVariableForEffect exists, but wiring a real replace path
+// (locating the right effect by index, rewriting the readonly effects array) is out
+// of scope for v1 — this only detects and flags them.
+function pushEffectColorOccurrences(node: SceneNode, page: PageNode, out: Occurrence[]) {
+  const effects = (node as any).effects;
+  if (!Array.isArray(effects)) return;
+  effects.forEach((effect: Effect) => {
+    if (effect.type !== 'DROP_SHADOW' && effect.type !== 'INNER_SHADOW') return;
+    if (effect.visible === false) return;
+    if (effect.boundVariables?.color) return; // already bound
+    const colorHex = rgbaToHex(effect.color);
+    const opacity = effect.color.a ?? 1;
+    const meta = groupMeta('color', colorHex, opacity, null);
+    out.push({
+      nodeId: node.id, nodeName: node.name, pageId: page.id, pageName: page.name,
+      category: meta.category, kind: 'color', field: 'effects',
+      valueKey: meta.valueKey, colorHex, opacity, replaceable: false,
+    });
+  });
+}
+
+function pushNumberOccurrence(
+  node: SceneNode, page: PageNode, kind: Exclude<Parameters<typeof groupMeta>[0], 'color'>,
+  field: string, num: number, out: Occurrence[],
+) {
+  const meta = groupMeta(kind, null, null, num);
+  out.push({
+    nodeId: node.id, nodeName: node.name, pageId: page.id, pageName: page.name,
+    category: meta.category, kind, field, valueKey: meta.valueKey, num,
+  });
+}
+
+function collectNode(
+  node: SceneNode, page: PageNode,
+  usedIds: Set<string>, refs: { id: string; ref: BrokenReference }[], occ: Occurrence[],
+  collectHardcoded: boolean, props: HardcodedProps,
+) {
+  const bv = (node as any).boundVariables as Record<string, any> | undefined;
+  if (bv) {
+    for (const field of Object.keys(bv)) {
+      const entry = bv[field];
+      const aliases = field === 'componentProperties' && entry && typeof entry === 'object' && !Array.isArray(entry)
+        ? Object.values(entry as any)
+        : Array.isArray(entry) ? entry : [entry];
+      for (const a of aliases as any[]) {
+        if (a && typeof a.id === 'string') {
+          usedIds.add(a.id);
+          refs.push({ id: a.id, ref: {
+            nodeId: node.id, nodeName: node.name, pageId: page.id, pageName: page.name,
+            field, variableId: a.id,
+          }});
+        }
+      }
+    }
+  }
+
+  if (collectHardcoded) {
+    // Colors
+    if (props.color) {
+      if ('fills' in node && (node as any).fills !== figma.mixed) pushColorOccurrences(node, page, 'fills', occ);
+      if ('strokes' in node && Array.isArray((node as any).strokes)) pushColorOccurrences(node, page, 'strokes', occ);
+      if ('effects' in node) pushEffectColorOccurrences(node, page, occ);
+    }
+
+    // Corner radius (uniform primary; per-corner when mixed)
+    if (props.radius && 'cornerRadius' in node) {
+      const cr = (node as any).cornerRadius;
+      if (cr !== figma.mixed && typeof cr === 'number') {
+        if (cr > 0 && !bv?.cornerRadius && !bv?.topLeftRadius) pushNumberOccurrence(node, page, 'radius', 'cornerRadius', cr, occ);
+      } else if (cr === figma.mixed && 'topLeftRadius' in node) {
+        for (const f of ['topLeftRadius','topRightRadius','bottomLeftRadius','bottomRightRadius'] as const) {
+          const val = (node as any)[f];
+          if (typeof val === 'number' && val > 0 && !bv?.[f]) pushNumberOccurrence(node, page, 'radius', f, val, occ);
+        }
+      }
+    }
+
+    // Stroke weight (only if strokes present, uniform)
+    if (props.strokeWeight && 'strokeWeight' in node && Array.isArray((node as any).strokes) && (node as any).strokes.length > 0) {
+      const sw = (node as any).strokeWeight;
+      if (sw !== figma.mixed && typeof sw === 'number' && sw > 0 && !bv?.strokeWeight) {
+        pushNumberOccurrence(node, page, 'strokeWeight', 'strokeWeight', sw, occ);
+      }
+    }
+
+    // Auto-layout spacing
+    if (props.spacing && 'layoutMode' in node && (node as any).layoutMode !== 'NONE') {
+      const paddingFields = ['paddingLeft','paddingRight','paddingTop','paddingBottom'] as const;
+      for (const f of paddingFields) {
+        const val = (node as any)[f];
+        if (typeof val === 'number' && val > 0 && !bv?.[f]) pushNumberOccurrence(node, page, 'spacing', f, val, occ);
+      }
+      // itemSpacing is ignored by Figma (shown as "Auto") when items are distributed —
+      // the property still holds a stale number, so reporting it would be a false positive.
+      if ((node as any).primaryAxisAlignItems !== 'SPACE_BETWEEN') {
+        const itemSpacing = (node as any).itemSpacing;
+        if (typeof itemSpacing === 'number' && itemSpacing > 0 && !bv?.itemSpacing) {
+          pushNumberOccurrence(node, page, 'spacing', 'itemSpacing', itemSpacing, occ);
+        }
+      }
+      // counterAxisSpacing (the wrap gap) only applies when the layout actually wraps.
+      if ((node as any).layoutWrap === 'WRAP') {
+        const counterAxisSpacing = (node as any).counterAxisSpacing;
+        if (typeof counterAxisSpacing === 'number' && counterAxisSpacing > 0 && !bv?.counterAxisSpacing) {
+          pushNumberOccurrence(node, page, 'spacing', 'counterAxisSpacing', counterAxisSpacing, occ);
+        }
+      }
+    }
+
+    // Typography (skip mixed)
+    if (props.typography && node.type === 'TEXT') {
+      const t = node as TextNode;
+      if (t.fontSize !== figma.mixed && typeof t.fontSize === 'number' && !bv?.fontSize)
+        pushNumberOccurrence(node, page, 'fontSize', 'fontSize', t.fontSize, occ);
+      if (t.lineHeight !== figma.mixed && (t.lineHeight as any).unit && (t.lineHeight as any).unit !== 'AUTO' && !bv?.lineHeight)
+        pushNumberOccurrence(node, page, 'lineHeight', 'lineHeight', (t.lineHeight as any).value, occ);
+      // Letter spacing 0 is the default and almost always intentional — skip it as noise.
+      if (t.letterSpacing !== figma.mixed && typeof (t.letterSpacing as any).value === 'number' && (t.letterSpacing as any).value !== 0 && !bv?.letterSpacing)
+        pushNumberOccurrence(node, page, 'letterSpacing', 'letterSpacing', (t.letterSpacing as any).value, occ);
+    }
+  }
+}
+
+function collectSelectionIds(): Set<string> {
+  const ids = new Set<string>();
+  const walk = (n: SceneNode) => { ids.add(n.id); if ('children' in n) for (const c of n.children) walk(c as SceneNode); };
+  for (const n of figma.currentPage.selection) walk(n);
+  return ids;
+}
+
+async function fullScan(): Promise<FullScan> {
+  figma.skipInvisibleInstanceChildren = true;
+  await figma.loadAllPagesAsync();
+
+  const usedIds = new Set<string>();
+  let localRaw: Variable[] = [];
+  let collName = new Map<string, string>();
+
+  if (checks.unused) {
+    localRaw = await figma.variables.getLocalVariablesAsync();
+    const collections = await figma.variables.getLocalVariableCollectionsAsync();
+    collName = new Map(collections.map(c => [c.id, c.name]));
+
+    // variable→variable alias usage
+    for (const v of localRaw) {
+      for (const modeId of Object.keys(v.valuesByMode)) {
+        const val = v.valuesByMode[modeId];
+        if (isAliasValue(val)) usedIds.add(val.id);
+      }
+    }
+  }
+
+  // Attached-library collection keys, needed for unlinked-variable detection.
+  // Cached per session (attachedKeysCache) since it rarely changes and the async
+  // teamLibrary call is comparatively slow — reused across set-scope/set-checks
+  // recomputes, only refetched when the cache has been explicitly reset (see the
+  // 'scan' message handler below). Defensive either way: if teamLibrary is
+  // unavailable (older Figma, or the request fails), unlinked detection is
+  // skipped entirely rather than flagging everything as unlinked.
+  let attachedKeys = new Set<string>();
+  let teamLibOk = false;
+  if (checks.unlinked) {
+    if (attachedKeysCache !== null) {
+      attachedKeys = attachedKeysCache;
+      teamLibOk = true;
+    } else {
+      try {
+        const avail = await figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync();
+        attachedKeys = new Set(avail.map(c => c.key));
+        attachedKeysCache = attachedKeys;
+        teamLibOk = true;
+      } catch (e) { teamLibOk = false; }
+    }
+  }
+
+  const refs: { id: string; ref: BrokenReference }[] = [];
+  const occurrencesAll: Occurrence[] = [];
+  let scanned = 0;
+  for (const page of figma.root.children) {
+    const nodes = (page as PageNode).findAll(() => true);
+    for (const node of nodes) {
+      // Some nodes findAll returns — notably the instance sublayers backing a slot, or
+      // table cells — throw "node … does not exist" the instant a getter like
+      // boundVariables is read, because their backing store is virtual. Isolate each node
+      // so one such node can't abort the whole scan; skipping it is safe because its
+      // bindings mirror the (accessible) main component, which is scanned anyway.
+      try {
+        collectNode(node as SceneNode, page as PageNode, usedIds, refs, occurrencesAll, checks.hardcoded, props);
+      } catch (e) { /* inaccessible instance sublayer / slot content — skip this node */ }
+      if ((++scanned % 800) === 0) figma.ui.postMessage({ type: 'scan-progress', scanned });
+    }
+  }
+
+  // Broken references + unlinked library variables: resolve each unique referenced
+  // id once, sharing the lookup between both checks.
+  const brokenAll: BrokenReference[] = [];
+  const unlinkedRefsAll: UnlinkedRef[] = [];
+  if (checks.broken || checks.unlinked) {
+    const resolvedVar = new Map<string, Variable | null>();
+    const resolvedColl = new Map<string, VariableCollection | null>();
+    const unlinkedMark = new Map<string, { variableName: string; collectionName: string; collectionKey: string }>();
+    for (const { id } of refs) {
+      if (resolvedVar.has(id)) continue;
+      const v = await figma.variables.getVariableByIdAsync(id);
+      resolvedVar.set(id, v);
+      if (v === null) continue; // broken — handled below
+      if (checks.unlinked && teamLibOk && v.remote) {
+        let c = resolvedColl.get(v.variableCollectionId);
+        if (c === undefined) {
+          c = await figma.variables.getVariableCollectionByIdAsync(v.variableCollectionId);
+          resolvedColl.set(v.variableCollectionId, c);
+        }
+        if (c && !attachedKeys.has(c.key)) {
+          unlinkedMark.set(id, { variableName: v.name, collectionName: c.name, collectionKey: c.key });
+        }
+      }
+    }
+    if (checks.broken) {
+      for (const { id, ref } of refs) if (resolvedVar.get(id) === null) brokenAll.push(ref);
+    }
+    if (checks.unlinked) {
+      for (const { id, ref } of refs) {
+        const mark = unlinkedMark.get(id);
+        if (mark) {
+          unlinkedRefsAll.push({
+            nodeId: ref.nodeId, nodeName: ref.nodeName, pageId: ref.pageId, pageName: ref.pageName,
+            field: ref.field, variableName: mark.variableName, collectionName: mark.collectionName, collectionKey: mark.collectionKey,
+          });
+        }
+      }
+    }
+  }
+
+  // Unused
+  let unused: UnusedVariable[] = [];
+  if (checks.unused) {
+    const firstModeValue = (v: Variable): unknown => v.valuesByMode[Object.keys(v.valuesByMode)[0]];
+    const infos: LocalVarInfo[] = localRaw.map(v => {
+      const isColor = v.resolvedType === 'COLOR';
+      const mv = firstModeValue(v);
+      const colorHex = isColor && mv && typeof mv === 'object' && !isAliasValue(mv)
+        ? rgbaToHex(mv as any) : undefined;
+      const valuePreview = colorHex ?? (typeof mv === 'number' ? formatNumber(mv) : isAliasValue(mv) ? '→ alias' : String(mv));
+      return {
+        id: v.id, name: v.name, collectionName: collName.get(v.variableCollectionId) ?? '—',
+        resolvedType: v.resolvedType, remote: v.remote, valuePreview, colorHex,
+      };
+    });
+    unused = computeUnused(infos, usedIds);
+  }
+
+  // Only surface teamLibOk when the unlinked check actually ran — otherwise it's
+  // not applicable, and undefined lets the UI treat it as "nothing to report" rather
+  // than "the fetch failed" (see ScanResult.teamLibraryOk).
+  return { unused, brokenAll, occurrencesAll, unlinkedRefsAll, teamLibraryOk: checks.unlinked ? teamLibOk : undefined };
+}
+
+function filterByScope(scope: Scope): ScanResult {
+  if (!lastScan) return { scope, summary: { unused: 0, broken: 0, hardcoded: 0, unlinked: 0 }, unused: [], broken: [], hardcoded: [], unlinked: [] };
+  const currentPageId = figma.currentPage.id;
+  const selIds = scope === 'selection' ? collectSelectionIds() : null;
+  const inScope = (nodeId: string, pageId: string) =>
+    scope === 'document' ? true :
+    scope === 'page' ? pageId === currentPageId :
+    !!selIds && selIds.has(nodeId);
+  const broken = lastScan.brokenAll.filter(b => inScope(b.nodeId, b.pageId));
+  const occ = lastScan.occurrencesAll.filter(o => inScope(o.nodeId, o.pageId));
+  const hardcoded: HardcodedGroup[] = groupHardcoded(occ);
+  const unlinkedRefs = lastScan.unlinkedRefsAll.filter(u => inScope(u.nodeId, u.pageId));
+  const unlinked: UnlinkedGroup[] = groupUnlinked(unlinkedRefs);
+  return {
+    scope,
+    summary: { unused: lastScan.unused.length, broken: broken.length, hardcoded: occ.length, unlinked: unlinkedRefs.length },
+    unused: lastScan.unused, broken, hardcoded, unlinked,
+    teamLibraryOk: lastScan.teamLibraryOk,
+  };
+}
+
+async function applyBinding(node: SceneNode, o: Occurrence, variable: Variable): Promise<void> {
+  if (o.kind === 'color') {
+    const key = o.field as 'fills' | 'strokes';
+    const paints = ((node as any)[key] as Paint[]).slice();
+    const p = paints[o.paintIndex ?? -1];
+    if (!p || p.type !== 'SOLID') throw new Error('paint gone');
+    paints[o.paintIndex!] = figma.variables.setBoundVariableForPaint(p as SolidPaint, 'color', variable);
+    (node as any)[key] = paints;
+  } else if (o.field === 'cornerRadius') {
+    (node as any).setBoundVariable('cornerRadius', variable);
+  } else {
+    if (node.type === 'TEXT' && node.fontName !== figma.mixed) await figma.loadFontAsync(node.fontName);
+    (node as any).setBoundVariable(o.field, variable);
+  }
+}
+
+// Library (published, not-yet-imported) variables of the matching resolved type,
+// offered alongside local candidates in the replace picker. Only collections
+// attached to this file via figma.teamLibrary are visible here; unavailability
+// (older Figma, no libraries attached, or a request failure) degrades to an empty
+// list rather than blocking local candidates. Capped defensively so a very large
+// library doesn't stall the UI — the picker is expected to search/filter over this
+// list rather than rely on exhaustive pagination.
+const LIBRARY_CANDIDATE_CAP = 500;
+async function fetchLibraryCandidates(resolvedType: 'COLOR' | 'FLOAT'): Promise<LibraryCandidate[]> {
+  const library: LibraryCandidate[] = [];
+  try {
+    const collections = await figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync();
+    for (const coll of collections) {
+      const vars = await figma.teamLibrary.getVariablesInLibraryCollectionAsync(coll.key);
+      for (const v of vars) {
+        if (v.resolvedType !== resolvedType) continue;
+        library.push({ key: v.key, name: v.name, collectionName: coll.name, resolvedType });
+        if (library.length >= LIBRARY_CANDIDATE_CAP) return library;
+      }
+    }
+  } catch (e) { return []; }
+  return library;
+}
+
+figma.ui.onmessage = async (msg: UIToPlugin) => {
+  try {
+    if (msg.type === 'scan') {
+      lastScope = msg.scope;
+      attachedKeysCache = null; // explicit rescan: re-read attached libraries, don't trust the cache
+      lastScan = await fullScan();
+      figma.ui.postMessage({ type: 'scan-result', result: filterByScope(msg.scope) });
+    } else if (msg.type === 'set-scope') {
+      lastScope = msg.scope;
+      if (!lastScan) lastScan = await fullScan();
+      figma.ui.postMessage({ type: 'scan-result', result: filterByScope(msg.scope) });
+    } else if (msg.type === 'set-checks') {
+      checks = msg.checks;
+      props = msg.props;
+      figma.clientStorage.setAsync(CHECKS_KEY, checks).catch(() => {});
+      figma.clientStorage.setAsync(PROPS_KEY, props).catch(() => {});
+      // Only rescan if a scan already ran — before that, the empty state stays
+      // until the user clicks Scan, so there is nothing yet to recompute.
+      if (lastScan) {
+        lastScan = await fullScan();
+        figma.ui.postMessage({ type: 'scan-result', result: filterByScope(lastScope) });
+      }
+    } else if (msg.type === 'navigate') {
+      const node = await figma.getNodeByIdAsync(msg.nodeId);
+      if (!node) {
+        figma.notify('That layer no longer exists — rescan.');
+        figma.ui.postMessage({ type: 'error', message: 'That layer no longer exists — rescan.' });
+        return;
+      }
+      const page = await figma.getNodeByIdAsync(msg.pageId);
+      if (page && page.type === 'PAGE' && figma.currentPage.id !== page.id) {
+        await figma.setCurrentPageAsync(page);
+      }
+      figma.currentPage.selection = [node as SceneNode];
+      figma.viewport.scrollAndZoomIntoView([node as SceneNode]);
+    } else if (msg.type === 'select-nodes') {
+      await figma.loadAllPagesAsync();
+      const resolved: SceneNode[] = [];
+      for (const id of msg.nodeIds) {
+        const node = await figma.getNodeByIdAsync(id);
+        if (node) resolved.push(node as SceneNode);
+      }
+      if (!resolved.length) { figma.notify('Those layers no longer exist — rescan.'); return; }
+
+      // Group the resolved nodes by the page they live on (ascend .parent to find
+      // it) — a group's occurrences can span pages, but figma.currentPage.selection
+      // is single-page, so we must pick one page to select on.
+      const byPage = new Map<string, { page: PageNode; nodes: SceneNode[] }>();
+      for (const node of resolved) {
+        let p: BaseNode | null = node;
+        while (p && p.type !== 'PAGE') p = p.parent;
+        if (!p) continue; // no page ancestor — shouldn't happen for a resolved scene node
+        const page = p as PageNode;
+        const bucket = byPage.get(page.id) ?? { page, nodes: [] as SceneNode[] };
+        bucket.nodes.push(node);
+        byPage.set(page.id, bucket);
+      }
+      if (!byPage.size) { figma.notify('Those layers no longer exist — rescan.'); return; }
+
+      // Prefer the current page (so selecting doesn't yank the view away);
+      // otherwise the page holding the most of these nodes.
+      const target = byPage.get(figma.currentPage.id) ??
+        Array.from(byPage.values()).reduce((best, b) => b.nodes.length > best.nodes.length ? b : best);
+
+      if (target.page.id !== figma.currentPage.id) await figma.setCurrentPageAsync(target.page);
+      figma.currentPage.selection = target.nodes;
+      figma.viewport.scrollAndZoomIntoView(target.nodes);
+
+      const otherCount = resolved.length - target.nodes.length;
+      let message = `Selected ${target.nodes.length} layer${target.nodes.length === 1 ? '' : 's'}`;
+      if (otherCount > 0) message += ` (${otherCount} on other pages)`;
+      figma.notify(message);
+    } else if (msg.type === 'detach') {
+      const node = await figma.getNodeByIdAsync(msg.nodeId);
+      if (!node) {
+        figma.notify('That layer no longer exists — rescan.');
+        figma.ui.postMessage({ type: 'error', message: 'That layer no longer exists — rescan.' });
+        return;
+      }
+      const field = msg.field;
+      // Only a bound variable that no longer resolves counts as "broken" — this guards
+      // against clearing a healthy binding that merely shares the field name.
+      const isBroken = async (a: any) => !!a && typeof a.id === 'string' && (await figma.variables.getVariableByIdAsync(a.id)) === null;
+      let changed = false;
+      try {
+        if (field === 'fills' || field === 'strokes') {
+          // fills/strokes are array-valued — setBoundVariable() (scalar-only) can't touch
+          // them; each broken solid paint must be cleared via setBoundVariableForPaint and
+          // the array reassigned, mirroring applyBinding's clone-and-reassign pattern.
+          const paints = ((node as any)[field] as Paint[]).slice();
+          for (let i = 0; i < paints.length; i++) {
+            const p = paints[i];
+            if (p.type === 'SOLID' && await isBroken((p as any).boundVariables?.color)) {
+              paints[i] = figma.variables.setBoundVariableForPaint(p as SolidPaint, 'color', null);
+              changed = true;
+            }
+          }
+          if (changed) (node as any)[field] = paints;
+        } else if (field === 'effects') {
+          // Same rationale as fills/strokes: effects are array-valued, cleared per-effect
+          // via setBoundVariableForEffect.
+          const effects = ((node as any).effects as Effect[]).slice();
+          for (let i = 0; i < effects.length; i++) {
+            const e = effects[i];
+            if (await isBroken((e as any).boundVariables?.color)) {
+              effects[i] = figma.variables.setBoundVariableForEffect(e, 'color', null);
+              changed = true;
+            }
+          }
+          if (changed) (node as any).effects = effects;
+        } else {
+          // Scalar bindable field (cornerRadius, strokeWeight, padding*, itemSpacing,
+          // fontSize, lineHeight, letterSpacing, opacity, visible, …) — setBoundVariable
+          // handles these directly.
+          (node as any).setBoundVariable(field, null);
+          changed = true;
+        }
+      } catch (e) {
+        figma.ui.postMessage({ type: 'error', message: 'Could not detach: ' + String((e as Error)?.message ?? e) });
+        return;
+      }
+      if (!changed) {
+        // Nothing was actually cleared (e.g. an unsupported/gradient-stop binding) —
+        // don't remove rows from the scan cache and falsely report success.
+        figma.ui.postMessage({ type: 'error', message: 'Nothing to detach on that layer.' });
+        return;
+      }
+      // Detaching bakes the last-resolved value into the layer as a concrete, now-unbound
+      // value — which a scan collects as a *hardcoded* occurrence. Filtering only the broken
+      // list in place would drop the broken row without recording that new hardcoded value,
+      // so the summary could under-count hardcoded and even report a false "all clear" (the
+      // same class of bug that was fixed for the replace path). Detach is a single, rare
+      // action, so recompute the whole scan to keep the cache truthful.
+      if (lastScan) lastScan = await fullScan();
+      figma.notify('Detached binding');
+      figma.ui.postMessage({ type: 'scan-result', result: filterByScope(lastScope) });
+    } else if (msg.type === 'delete-variables') {
+      const removed: string[] = [];
+      for (const id of msg.ids) {
+        const v = await figma.variables.getVariableByIdAsync(id);
+        if (v) { try { v.remove(); removed.push(id); } catch { /* in use / locked */ } }
+      }
+      if (lastScan && removed.length) {
+        const removedSet = new Set(removed);
+        lastScan.unused = lastScan.unused.filter(u => !removedSet.has(u.id));
+      }
+      const deleteMessage = `Deleted ${removed.length} variable${removed.length === 1 ? '' : 's'}.`;
+      figma.notify(deleteMessage);
+      figma.ui.postMessage({
+        type: 'action-result', ok: true,
+        message: deleteMessage,
+        removedVariableIds: removed,
+      });
+      // update in place from the cached scan rather than a full rescan
+      figma.ui.postMessage({ type: 'scan-result', result: filterByScope(lastScope) });
+    }
+    else if (msg.type === 'get-candidates') {
+      const wantColor = msg.category === 'color';
+      const type = wantColor ? 'COLOR' : 'FLOAT';
+      const localVars = (await figma.variables.getLocalVariablesAsync()).filter(v => v.resolvedType === type);
+      const collections = await figma.variables.getLocalVariableCollectionsAsync();
+      const collName = new Map(collections.map(c => [c.id, c.name]));
+      // Resolve each candidate's real value by following alias chains through the Figma
+      // API. getVariableByIdAsync resolves LOCAL and REMOTE targets alike, so a semantic
+      // token that aliases a primitive in a library or another collection resolves to its
+      // concrete value instead of showing "—" (a pure local-only map missed that common
+      // design-system case). Fetched targets are cached for this picker request.
+      const varCache = new Map<string, Variable | null>();
+      const resolveConcrete = async (variable: Variable, modeId: string, seen: Set<string>): Promise<any> => {
+        if (seen.has(variable.id)) return null; // cycle guard
+        seen.add(variable.id);
+        const useMode = modeId in variable.valuesByMode ? modeId : Object.keys(variable.valuesByMode)[0];
+        if (useMode === undefined) return null;
+        const val = (variable.valuesByMode as any)[useMode];
+        if (val && typeof val === 'object' && val.type === 'VARIABLE_ALIAS') {
+          if (!varCache.has(val.id)) varCache.set(val.id, await figma.variables.getVariableByIdAsync(val.id));
+          const target = varCache.get(val.id);
+          if (!target) return null;
+          return resolveConcrete(target, Object.keys(target.valuesByMode)[0], seen);
+        }
+        return val ?? null;
+      };
+      const resolved: ResolvedCandidate[] = [];
+      for (const v of localVars) {
+        const modes = Object.keys(v.valuesByMode);
+        const modeValues: any[] = [];
+        for (const m of modes) modeValues.push(await resolveConcrete(v, m, new Set()));
+        const first = modeValues[0];
+        const colorHex = wantColor && first && typeof first === 'object' ? rgbaToHex(first) : undefined;
+        const valuePreview = wantColor ? (colorHex ?? '—') : (typeof first === 'number' ? formatNumber(first) : '—');
+        resolved.push({ id: v.id, name: v.name, collectionName: collName.get(v.variableCollectionId) ?? '—',
+          resolvedType: type, valuePreview, colorHex, modeValues });
+      }
+      const group = lastScan?.occurrencesAll.find(o => o.valueKey === msg.valueKey);
+      const target = wantColor
+        ? { kind: 'color' as const, colorHex: group?.colorHex ?? '', opacity: group?.opacity ?? 1 }
+        : { kind: 'number' as const, num: group?.num ?? 0 };
+      const local = rankCandidates(target, resolved);
+      const library = await fetchLibraryCandidates(type);
+      figma.ui.postMessage({ type: 'candidates', category: msg.category, valueKey: msg.valueKey, local, library });
+    }
+    else if (msg.type === 'replace') {
+      // Either a library key (import-on-pick, then bind) or a local variableId
+      // (existing path) — the UI sends exactly one depending on which list the
+      // user picked from.
+      let imported: Variable | null = null;
+      if (msg.libraryKey) {
+        try { imported = await figma.variables.importVariableByKeyAsync(msg.libraryKey); }
+        catch (e) {
+          figma.ui.postMessage({ type: 'error', message: 'Could not import that library variable: ' + String((e as Error)?.message ?? e) });
+          return;
+        }
+      } else if (msg.variableId) {
+        imported = await figma.variables.getVariableByIdAsync(msg.variableId);
+      }
+      if (!imported) {
+        figma.notify('That variable no longer exists — rescan.');
+        figma.ui.postMessage({ type: 'error', message: 'That variable no longer exists — rescan.' });
+        return;
+      }
+      const variable = imported; // narrow to non-null once, reused below
+      const occ = (lastScan?.occurrencesAll ?? []).filter(o => o.valueKey === msg.valueKey);
+      let replaced = 0, skipped = 0;
+      const bound: Occurrence[] = []; // occurrences that were actually bound successfully this pass
+      for (const o of occ) {
+        // Gradient-stop / shadow-effect colors are navigate-only in v1 (see
+        // pushGradientStopOccurrences / pushEffectColorOccurrences) — the UI hides
+        // Replace when a whole group is non-replaceable, but a group can be a mix
+        // (same hex/opacity from a solid fill AND a gradient stop elsewhere), so
+        // guard here too rather than let applyBinding fail on a field it can't handle.
+        if (o.replaceable === false) { skipped++; continue; }
+        const node = await figma.getNodeByIdAsync(o.nodeId);
+        if (!node) { skipped++; continue; }
+        try { await applyBinding(node as SceneNode, o, variable); replaced++; bound.push(o); }
+        catch { skipped++; }
+      }
+      if (lastScan) {
+        // Drop only the occurrences that were actually bound this pass — skipped ones
+        // (node gone, or applyBinding threw) are still hardcoded on canvas and must stay
+        // in the cache, otherwise summary.hardcoded can undercount (even hit 0) and the
+        // UI falsely reports "all clear". Reference identity is safe here: `bound` holds
+        // the exact object instances drawn from lastScan.occurrencesAll via `occ` above,
+        // so a Set membership test (O(1) per element) is exact and avoids an O(N×M) scan.
+        const boundSet = new Set(bound);
+        lastScan.occurrencesAll = lastScan.occurrencesAll.filter(o => !boundSet.has(o));
+        // at least one binding actually landed — the target variable is no longer unused
+        if (replaced > 0) lastScan.unused = lastScan.unused.filter(u => u.id !== variable.id);
+      }
+      const prefix = msg.libraryKey ? 'Imported & replaced' : 'Replaced';
+      const replaceMessage = `${prefix} ${replaced}${skipped ? `, skipped ${skipped}` : ''}.`;
+      figma.notify(replaceMessage);
+      figma.ui.postMessage({ type: 'action-result', ok: true,
+        message: replaceMessage,
+        replacedValueKey: msg.valueKey, replacedCount: replaced, skippedCount: skipped });
+      // update in place from the cached scan rather than a full rescan
+      figma.ui.postMessage({ type: 'scan-result', result: filterByScope(lastScope) });
+    }
+  } catch (e) {
+    figma.ui.postMessage({ type: 'error', message: String((e as Error)?.message ?? e) });
+  }
+};
